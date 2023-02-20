@@ -65,3 +65,10 @@ repos:
 #   rev: v2.2.2
 #   hooks:
 #   - id: codespell
+
+# Additional Hooks
+#- repo: https://github.com/kynan/nbstripout
+#  rev: 0.6.0
+#  hooks:
+#    - id: nbstripout
+#      args: [--extra-keys=metadata.kernelspec metadata.language_info]
