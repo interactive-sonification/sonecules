@@ -1,5 +1,5 @@
 from sonecules.base import Sonecule
-
+from pya import Asig
 
 class BufferSynth(Sonecule):
     synth_name: str
@@ -10,20 +10,20 @@ class BufferSynth(Sonecule):
             raise NotImplementedError(
                 "the selected Context does not offer an {self.synth_name} Synth"
             )
-        # self.df = ...
-        self.buf = self.context.buffers.from_data(data, sr)
+        self.dasig = Asig(data, sr)
+        self.buf = self.context.buffers.from_data(self.dasig.sig, self.dasig.sr)
         self.synth = self.context.synths.from_buffer(
             self.buf, synth_name=type(self).synth_name
         )
 
-    def resampling(self, **kwargs):
-        # TODO
-        # get data from self.buf (not implemented) or save it in __init__
-        # > data = self.buf ---- .data
+    def resample(self, **kwargs):
+        """resample to given sampling rate (sr) applying specific resampling rate (rate)
+        self.data is assumed to be synchronized with buffer self.buf
+        """
         # create Asig
-        # > asig = Asig(data, ...)
+        asig = Asig(self.dasig, sr=...)
         # process using Asig instance...
-        # > self.buf = self.context.buffer.from_asig(asig)
+        self.buf = self.context.buffer.from_asig(asig)
         ...
 
     def schedule(self, at=0, params=None):

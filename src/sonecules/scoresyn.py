@@ -6,7 +6,7 @@ from pandas import DataFrame
 
 from sonecules.base import Sonecule
 
-# TODO rename modules to scorebased son, ... depending on thier usage
+# TODO rename modules to scorebased son, ... depending on their usage
 
 
 class StandardPMSon(Sonecule):
@@ -22,10 +22,10 @@ class StandardPMSon(Sonecule):
         if parameter_specs is None:
             parameter_specs = {}
 
-        # treat the rest f.e. bounds as synth attributes
+        # treat the additional arguments (e.g., bounds) as synth attributes
         for param, param_spec in parameter_specs.items():
             if param not in self._synth.params:
-                raise ValueError(f"{param} is not a Parameter of {self._synth}")
+                raise ValueError(f"{param} is not a parameter of {self._synth}")
             if "bounds" in param_spec:
                 getattr(self._synth, param).bounds = param_spec["bounds"]
             if "default" in param_spec:

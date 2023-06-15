@@ -88,9 +88,9 @@ class Sonecules:
         assert isinstance(context.backend, BackendSC3NB)
         backend: BackendSC3NB = context.backend
 
-        # How could this preperation be placed by the relevant Sonecule instead of here?
-        # perhaps using a static methods for this at the classes named f.e. prepare
-        # but when should/can these be called?
+        # How could this preparation be placed by the relevant Sonecule instead of here?
+        # perhaps using a static method for this at the classes named e.g. prepare()
+        # but when should/could these be called?
 
         context.synths.buffer_synthdefs[
             "timbralson"
