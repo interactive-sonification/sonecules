@@ -1,5 +1,7 @@
-from sonecules.base import Sonecule
 from pya import Asig
+
+from sonecules.base import Sonecule
+
 
 class BufferSynth(Sonecule):
     synth_name: str
