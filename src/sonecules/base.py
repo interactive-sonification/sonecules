@@ -2,6 +2,7 @@ import uuid
 from typing import Optional
 
 from mesonic.context import Context
+from mesonic.events import Event
 
 from sonecules import Sonecules
 
@@ -47,6 +48,8 @@ class Sonecule:
 
     def reset(self):
         """Remove events belonging to this Sonecule from the mesonic Timeline"""
-        # TODO this should be done in mesonic
-        # self._context.timeline.
-        pass  # raise NotImplementedError
+
+        def sonecule_id_filter(event: Event) -> bool:
+            return event.info.get("sonecule_id", None) == self._sonecule_id
+
+        self._context.timeline.filter(sonecule_id_filter)

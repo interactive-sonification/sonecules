@@ -11,10 +11,11 @@ class BufferSynth(Sonecule):
                 "the selected Context does not offer an {self.synth_name} Synth"
             )
         # self.df = ...
-        self.buf = self.context.buffers.from_data(data, sr)
-        self.synth = self.context.synths.from_buffer(
-            self.buf, synth_name=type(self).synth_name
+        self._buf = self.context.buffers.from_data(data, sr)
+        self._synth = self.context.synths.from_buffer(
+            self._buf, synth_name=type(self).synth_name
         )
+        self._synth.metadata["sonecule_id"] = self.sonecule_id
 
     def resampling(self, **kwargs):
         # TODO
@@ -28,7 +29,7 @@ class BufferSynth(Sonecule):
 
     def schedule(self, at=0, params=None):
         with self.context.at(time=at):
-            self.synth.start(params=params)
+            self._synth.start(params=params)
 
         # could also offer schedule_from_to(at, until, params) or extend this
         # that changes the rate to match the buffer duration accordingly

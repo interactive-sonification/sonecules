@@ -17,7 +17,7 @@ class StandardPMSon(Sonecule):
         context=None,
     ):
         super().__init__(context)
-        self._pepare_synth(synth)
+        self._synth = self._pepare_synth(synth)
 
         if parameter_specs is None:
             parameter_specs = {}
@@ -33,7 +33,7 @@ class StandardPMSon(Sonecule):
 
         # TODO Synth creation vs passing
         # creation here should add metadata which then is added to each produced event
-        self._synth.metadata = self.sonecule_id
+        self._synth.metadata["sonecule_id"] = self.sonecule_id
 
     @abstractmethod
     def _pepare_synth(self, synth):
@@ -63,9 +63,9 @@ class StandardContinuousPMSon(StandardPMSon):
             assert (
                 synth.mutable
             ), "Synth needs to be mutable for continuous Parameter Mapping Sonification"
-            self._synth = synth
+            return synth
         else:
-            self._synth = self.context.synths.create(synth, track=1)
+            return self.context.synths.create(synth, track=1)
 
     def schedule(
         self,
