@@ -31,6 +31,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with: {fetch-depth: 0}  # deep clone for setuptools-scm
+      - name: Install portaudio Ubuntu
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash -l {0}
+        run: sudo apt-get install portaudio19-dev
+      - name: Install portaudio MacOS
+        if: matrix.os == 'macos-latest'
+        shell: bash -l {0}
+        run: brew install portaudio
       - uses: actions/setup-python@v4
         id: setup-python
         with: {python-version: "3.11"}
