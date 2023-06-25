@@ -31,29 +31,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with: {fetch-depth: 0}  # deep clone for setuptools-scm
-      - name: Install portaudio
-        shell: bash -l {0}
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-              sudo apt-get update
-              sudo apt-get install portaudio19-dev
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-              brew install portaudio
-          fi
-      - name: Install SuperCollider
-        shell: bash -l {0}
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-              sudo apt-get update
-              sudo apt-get install --yes supercollider
-              # start jack
-              jackd --no-realtime -d dummy &
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-              brew install --cask supercollider
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-              # choco only offers an ancient version of SC.
-              choco install supercollider
-          fi
       - uses: actions/setup-python@v4
         id: setup-python
         with: {python-version: "3.11"}
@@ -93,6 +70,29 @@ jobs:
         id: setup-python
         with:
           python-version: ${{ matrix.python }}
+      - name: Install portaudio
+        shell: bash -l {0}
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+              sudo apt-get update
+              sudo apt-get install portaudio19-dev
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+              brew install portaudio
+          fi
+      - name: Install SuperCollider
+        shell: bash -l {0}
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+              sudo apt-get update
+              sudo apt-get install --yes supercollider
+              # start jack
+              jackd --no-realtime -d dummy &
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+              brew install --cask supercollider
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+              # choco only offers an ancient version of SC.
+              choco install supercollider
+          fi
       - name: Retrieve pre-built distribution files
         uses: actions/download-artifact@v3
         with: {name: python-distribution-files, path: dist/}
