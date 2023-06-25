@@ -31,14 +31,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with: {fetch-depth: 0}  # deep clone for setuptools-scm
-      - name: Install portaudio Ubuntu
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install portaudio
         shell: bash -l {0}
-        run: sudo apt-get install portaudio19-dev
-      - name: Install portaudio MacOS
-        if: matrix.os == 'macos-latest'
-        shell: bash -l {0}
-        run: brew install portaudio
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+              sudo apt-get update
+              sudo apt-get install portaudio19-dev
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+              brew install portaudio
+          fi
       - name: Install SuperCollider
         shell: bash -l {0}
         run: |
