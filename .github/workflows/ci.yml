@@ -39,6 +39,20 @@ jobs:
         if: matrix.os == 'macos-latest'
         shell: bash -l {0}
         run: brew install portaudio
+      - name: Install SuperCollider
+        shell: bash -l {0}
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+              sudo apt-get update
+              sudo apt-get install --yes supercollider
+              # start jack
+              jackd --no-realtime -d dummy &
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+              brew install --cask supercollider
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+              # choco only offers an ancient version of SC.
+              choco install supercollider
+          fi
       - uses: actions/setup-python@v4
         id: setup-python
         with: {python-version: "3.11"}
