@@ -17,7 +17,7 @@ class BufferSynth(Sonecule):
         self.synth = self.context.synths.from_buffer(
             self.buf, synth_name=type(self).synth_name
         )
-        self._synth.metadata["sonecule_id"] = self.sonecule_id
+        self.synth.metadata["sonecule_id"] = self.sonecule_id
 
     def resample(self, **kwargs):
         """resample to given sampling rate (sr) applying specific resampling rate (rate)
