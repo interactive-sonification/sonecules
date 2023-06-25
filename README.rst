@@ -34,10 +34,10 @@ sonecules
 =========
 
 
-    Add a short description here!
+    a Python Sonification Architecture
 
 
-A longer description of your project goes here...
+sonecules are sonification designs wrapped in a concise object-oriented interface based on `mesonic <https://github.com/interactive-sonification/mesonic>`.
 
 
 .. _pyscaffold-notes:
