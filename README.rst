@@ -37,7 +37,7 @@ sonecules
     a Python Sonification Architecture
 
 
-sonecules are sonification designs wrapped in a concise object-oriented interface based on `mesonic <https://github.com/interactive-sonification/mesonic>`.
+sonecules are sonification designs wrapped in a concise object-oriented interface based on `mesonic <https://github.com/interactive-sonification/mesonic/>`.
 
 
 .. _pyscaffold-notes:
