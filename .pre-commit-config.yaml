@@ -67,8 +67,8 @@ repos:
 #   - id: codespell
 
 # Additional Hooks
-#- repo: https://github.com/kynan/nbstripout
-#  rev: 0.6.0
-#  hooks:
-#    - id: nbstripout
-#      args: [--extra-keys=metadata.kernelspec metadata.language_info]
+- repo: https://github.com/kynan/nbstripout
+  rev: 0.6.0
+  hooks:
+    - id: nbstripout
+      args: [--extra-keys=metadata.kernelspec metadata.language_info]
