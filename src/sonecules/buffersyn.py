@@ -29,13 +29,16 @@ class BufferSynth(Sonecule):
         self.buf = self.context.buffer.from_asig(asig)
         ...
 
-    def schedule(self, at=0, params=None):
+    def schedule(self, at=0, params=None, reset_flag=True):
+        if reset_flag:
+            self.reset()   
         with self.context.at(time=at):
-            self._synth.start(params=params)
+            self.synth.start(params=params)
 
         # could also offer schedule_from_to(at, until, params) or extend this
         # that changes the rate to match the buffer duration accordingly
         # this would then exclude rate from the viable params
+
 
 
 class Audification(BufferSynth):
