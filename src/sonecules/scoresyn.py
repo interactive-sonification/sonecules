@@ -1,14 +1,13 @@
+import numbers
 from abc import abstractmethod
 from typing import Any, Dict, Optional
 
+import numpy
+import sc3nb as scn
 from mesonic.synth import Synth
 from pandas import DataFrame
 
 from sonecules.base import Sonecule
-import numbers
-import numpy
-
-import sc3nb as scn
 
 # TODO rename modules to scorebased son, ... depending on their usage
 
@@ -130,7 +129,7 @@ class StandardDiscretePMSon(StandardPMSon):
             # self._synth = synth
             return synth
         else:
-            #self._synth = self.context.synths.create(synth, track=1, mutable=False)
+            # self._synth = self.context.synths.create(synth, track=1, mutable=False)
             return self.context.synths.create(synth, track=1, mutable=False)
 
     def schedule(
@@ -183,7 +182,7 @@ class TVOSon(Sonecule):
         # create SynthDef for tvosc
         scn.SynthDef(
             "tvosc-sine-1ch",
-            """{ | out=0, freq=400, amp=0.1, pan=0, lg=0.1 | 
+            """{ | out=0, freq=400, amp=0.1, pan=0, lg=0.1 |
             var sig = SinOsc.ar(freq.lag(lg), mul: amp.lag(lg));
             Out.ar(out, Pan2.ar(sig, pan));
         }""",
@@ -213,7 +212,7 @@ class TVOSon(Sonecule):
         # "change"
         ctx = self.context
         if reset_flag:
-            self.reset()   # self.reset
+            self.reset()  # self.reset
 
         # start syns (oscillators)
         with ctx.at(time=at):
@@ -233,13 +232,13 @@ class TVOSon(Sonecule):
             pch_centers = [0] * self.data.channels
             pch_wids = [0] * self.data.channels
             for i in range(self.data.channels):
-                pch_centers[i] = base_pitch + i * pitch_step 
+                pch_centers[i] = base_pitch + i * pitch_step
                 pch_wids[i] = pitch_step * pitch_relwid / 2
         elif isinstance(pitch_step, list):
-            print(len(pitch_step), self.data.channels)
+            # print(len(pitch_step), self.data.channels)
             assert len(pitch_step) == self.data.channels
             pch_centers = numpy.array(pitch_step) + base_pitch
-            pch_wids = numpy.diff([0] + pitch_step) * pitch_relwid 
+            pch_wids = numpy.diff([0] + pitch_step) * pitch_relwid
 
         global_amp = scn.dbamp(level)
         maxonset = -1
@@ -274,14 +273,13 @@ class TVOSon(Sonecule):
             for syn in self.syns:
                 syn.stop()
         return self
-    
+
     def start(self, **kwargs):
         """start sonification rendering by starting the playback
         kwargs are passed on to start(), so use rate to control speedup, etc.
         """
         print(kwargs)
         # sn.playback().start(**kwargs)
-
 
 
 class CPMSonCB(Sonecule):
@@ -293,25 +291,26 @@ class CPMSonCB(Sonecule):
         if self.synthdef:
             scn.SynthDef("contsyn", synthdef).add()
         else:
-            print("no synth definition: use default contsyn")
-            scn.SynthDef("contsyn", 
-            """{ | out=0, freq=400, amp=0.1, vibfreq=0, vibintrel=0, numharm=0, pulserate=0, pint=0, pwid=1, pan=0 | 
+            # print("no synth definition: use default contsyn")
+            scn.SynthDef(
+                "contsyn",
+                """{ | out=0, freq=400, amp=0.1, vibfreq=0, vibintrel=0, numharm=0, pulserate=0, pint=0, pwid=1, pan=0 |
                 var vib = SinOsc.ar(vibfreq, mul: vibintrel*freq, add: freq);
                 var sig = Blip.ar(vib, mul: amp, numharm: numharm);
                 var pulse = LFPulse.ar(freq: pulserate, iphase: 0.0, width: pwid, mul: pint, add: 1-pint);
                 Out.ar(out, Pan2.ar(sig * pulse, pan));
-            }""").add()
+            }""",
+            ).add()
 
         ctx = self.context
 
         ctx._backend.sc.server.sync()
 
-        self.syn = ctx.synths.create(name="contsyn", track=1,  mutable=True)
+        self.syn = ctx.synths.create(name="contsyn", track=1, mutable=True)
 
         self.pdict = {}
         for k, v in self.syn.params.items():
             self.pdict[k] = v.default
-
 
     @staticmethod
     def mapcol(r, name, cmins, cmaxs, dmi, dma):
@@ -329,7 +328,7 @@ class CPMSonCB(Sonecule):
         # "change"
         ctx = self.context
         if reset_flag:
-            self.reset() 
+            self.reset()
 
         # create synths
         with ctx.at(time=at):
@@ -343,11 +342,11 @@ class CPMSonCB(Sonecule):
         nrows = df.shape[0]
         cmi = df.min()
         cma = df.max()
-        # modulate parameters by data 
-        ct = 0 
+        # modulate parameters by data
+        ct = 0
         for idx, r in df.iterrows():
             onset = scn.linlin(ct, 0, nrows, 0, duration)
-            with ctx.at(time=at+onset):
+            with ctx.at(time=at + onset):
                 pdict = callback_fn(r, cmi, cma, self.pdict)
                 self.syn.set(pdict)
             if onset > maxonset:
@@ -357,52 +356,56 @@ class CPMSonCB(Sonecule):
         # stop oscillators
 
         # stop oscillator at end
-        with ctx.at(time=at+maxonset):
+        with ctx.at(time=at + maxonset):
             self.syn.stop()
 
         return self
-    
+
     def create_callback_template(self, auto_assign=False):
         df = self.data
         tabstr = "    "
         str = "def cbfn(r, cmi, cma, pp):\n"
-        str += tabstr + f"# columns are:" 
+        str += tabstr + "# columns are:"
         feature_list = []
         for i, col in enumerate(df.columns):
             feature = col
             feature_list.append(feature)
             str += f"'{col}' "
-            if (i+1) % 4 == 0: 
-                str += "\n" + tabstr + '# '
-        str += '\n'
-        
+            if (i + 1) % 4 == 0:
+                str += "\n" + tabstr + "# "
+        str += "\n"
+
         fct = 0
         for p in self.pdict:
-            if p == 'out': 
+            if p == "out":
                 continue
             if auto_assign:
                 # assign features automatically
                 feature = feature_list[fct]
                 fct += 1
-                if fct == len(feature_list)-1:
+                if fct == len(feature_list) - 1:
                     fct = 0
                 leftstr = f"pp['{p}']"
-                bound_left = self.pdict[p]*0.75
-                bound_right = self.pdict[p]*1.5
-                str += tabstr + f"{leftstr:15s}\t = mapcol(r, '{feature}', cmi, cma, {bound_left}, {bound_right})\n"
+                bound_left = self.pdict[p] * 0.75
+                bound_right = self.pdict[p] * 1.5
+                str += (
+                    tabstr
+                    + f"{leftstr:15s}\t = mapcol(r, '{feature}', cmi, cma, {bound_left}, {bound_right})\n"
+                )
                 pass
             else:
                 str += tabstr + f"pp['{p}']\t = mapcol(r, 'colname', cmi, cma, 1, 2)\n"
             ""
         print(str)
-        print("# create sonification e.g. by using\n" +
-              "scb.schedule(at=0, duration=2, callback_fn=callback_fn).start(rate=1)\n")
+        print(
+            "# create sonification e.g. by using\n"
+            + "scb.schedule(at=0, duration=2, callback_fn=callback_fn).start(rate=1)\n"
+        )
         return str
 
     def start(self, **kwargs):
         """start sonification rendering by starting the playback
         kwargs are passed on to start(), so use rate to control speedup, etc.
         """
-        print(kwargs)
-        sn.playback().start(**kwargs)
-    
+        # print(kwargs)
+        # sn.playback().start(**kwargs)
