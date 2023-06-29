@@ -390,7 +390,7 @@ class CPMSonCB(Sonecule):
                 bound_right = self.pdict[p] * 1.5
                 str += (
                     tabstr
-                    + f"{leftstr:15s}\t = mapcol(r, '{feature}', cmi, cma, {bound_left}, {bound_right})\n"
+                    + f"{leftstr:15s}\t = mapcol(r, '{feature}', cmi, cma, {bound_left:.2f}, {bound_right:.2f})\n"
                 )
                 pass
             else:
