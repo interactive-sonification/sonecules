@@ -46,7 +46,7 @@ class Sonecule:
                 self.sonecule_id
             )
 
-    def reset(self):
+    def remove(self):
         """Remove events belonging to this Sonecule from the mesonic Timeline"""
 
         def sonecule_id_filter(event: Event) -> bool:

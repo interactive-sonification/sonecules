@@ -29,9 +29,9 @@ class BufferSynth(Sonecule):
         self.buf = self.context.buffer.from_asig(asig)
         ...
 
-    def schedule(self, at=0, params=None, reset_flag=True):
-        if reset_flag:
-            self.reset()   
+    def schedule(self, at=0, params=None, remove=True):
+        if remove:
+            self.remove()
         with self.context.at(time=at):
             self.synth.start(params=params)
 
@@ -40,11 +40,9 @@ class BufferSynth(Sonecule):
         # this would then exclude rate from the viable params
 
 
-
 class Audification(BufferSynth):
     synth_name = "playbuf"
 
 
 class TimbralSon(BufferSynth):
     synth_name = "timbralson"
-    # TODO we should perhaps seperate synth name from sonecule name

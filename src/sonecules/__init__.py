@@ -38,8 +38,8 @@ def stop():
     gcc().stop()
 
 
-def reset(at=0, rate=1):
-    gcc().reset(at=at, rate=rate)
+def clear(at=0, rate=1):
+    gcc().clear(at=at, rate=rate)
 
 
 def playback():

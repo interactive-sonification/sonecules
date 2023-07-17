@@ -79,7 +79,7 @@ class StandardContinuousPMSon(StandardPMSon):
         sort_by_onset=True,
         **odfkwargs,
     ):
-        self.reset()
+        self.remove()
 
         if sort_by_onset:
             col, _, _ = mapping["onset"]
@@ -141,7 +141,7 @@ class StandardDiscretePMSon(StandardPMSon):
         sort_by_onset=True,
         **odfkwargs,
     ):
-        self.reset()
+        self.remove()
 
         if sort_by_onset:
             col, _, _ = mapping["onset"]
@@ -176,7 +176,7 @@ class TVOSon(Sonecule):
     def __init__(self, data, context=None):
         super().__init__(context=context)
 
-        self.data = data
+        self.data = data  # TODO data needs to be a Asig here .channels, .sr, .sig
         ctx = self.context
 
         # create SynthDef for tvosc
@@ -206,13 +206,13 @@ class TVOSon(Sonecule):
         amp_mode="absval",
         map_mode="channelwise",
         level=-6,
-        reset_flag=True,
+        remove=True,
     ):
         # here schedule function, with argument for replace default to true
         # "change"
         ctx = self.context
-        if reset_flag:
-            self.reset()  # self.reset
+        if remove:
+            self.remove()
 
         # start syns (oscillators)
         with ctx.at(time=at):
@@ -322,13 +322,13 @@ class CPMSonCB(Sonecule):
         at=0,
         duration=4,
         callback_fn=None,
-        reset_flag=True,
+        remove=True,
     ):
         # here schedule function, with argument for replace default to true
         # "change"
         ctx = self.context
-        if reset_flag:
-            self.reset()
+        if remove:
+            self.remove()
 
         # create synths
         with ctx.at(time=at):
@@ -402,10 +402,3 @@ class CPMSonCB(Sonecule):
             + "scb.schedule(at=0, duration=2, callback_fn=callback_fn).start(rate=1)\n"
         )
         return str
-
-    def start(self, **kwargs):
-        """start sonification rendering by starting the playback
-        kwargs are passed on to start(), so use rate to control speedup, etc.
-        """
-        # print(kwargs)
-        # sn.playback().start(**kwargs)
