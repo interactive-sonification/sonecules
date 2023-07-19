@@ -278,8 +278,8 @@ class TVOSon(Sonecule):
         """start sonification rendering by starting the playback
         kwargs are passed on to start(), so use rate to control speedup, etc.
         """
-        print(kwargs)
-        # sn.playback().start(**kwargs)
+        # print(kwargs)
+        self.context.realtime_playback.start(**kwargs)
 
 
 class CPMSonCB(Sonecule):
