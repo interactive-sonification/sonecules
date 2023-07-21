@@ -3,6 +3,7 @@ from abc import abstractmethod
 from typing import Any, Dict, Optional
 
 import numpy
+import pyamapping as pam
 import sc3nb as scn
 from mesonic.synth import Synth
 from pandas import DataFrame
@@ -12,7 +13,7 @@ from sonecules.base import Sonecule
 # TODO rename modules to scorebased son, ... depending on their usage
 
 
-class StandardPMSon(Sonecule):
+class BasicPMS(Sonecule):
     def __init__(
         self,
         synth: str = "s2",
@@ -59,8 +60,82 @@ class StandardPMSon(Sonecule):
         # clear the current events from the timeline
         ...
 
+    def start(self, **kwargs):
+        """start sonification rendering by starting the playback
+        kwargs are passed on to start(), so use rate to control speedup, etc.
+        """
+        # print(kwargs)
+        self.context.realtime_playback.start(**kwargs)
 
-class StandardContinuousPMSon(StandardPMSon):
+
+def fnarg_to_fun(fun):
+    """turn fnargument into function if needed
+    fun can be either a string ("lin", "log", "exp") for corresponding mapping
+    or a function such as pam.linlin, or a custom function which
+    offers dmin dmax args for the data min/max and y1, y2 args for the resulting
+    parameter args
+
+    Args:
+        fun (str or callable): argument passed in mapping tuple
+
+    Returns:
+        callable: the function that can be used inside the PMS loops
+    """
+    if fun == "lin":
+        return lambda value, dmin, dmax, y1, y2: pam.linlin(
+            value, x1=dmin, x2=dmax, y1=y1, y2=y2
+        )
+    if fun == "exp":
+        return lambda value, dmin, dmax, y1, y2: numpy.exp(
+            pam.linlin(value, x1=dmin, x2=dmax, y1=numpy.log(y1), y2=numpy.log(y2))
+        )
+    if fun == "log":
+        return lambda value, dmin, dmax, y1, y2: numpy.log(
+            pam.linlin(value, x1=dmin, x2=dmax, y1=numpy.exp(y1), y2=numpy.exp(y2))
+        )
+    if callable(fun):
+        varnames = fun.__code__.co_varnames[: fun.__code__.co_argcount]
+        if ("x1" in varnames) and ("x2" in varnames):
+            return lambda value, dmin, dmax, y1, y2: fun(
+                value, x1=dmin, x2=dmax, y1=y1, y2=y2
+            )
+        print("ERROR:", varnames)
+        return lambda value, dmin, dmax, y1, y2: pam.linlin(
+            value, x1=dmin, x2=dmax, y1=y1, y2=y2
+        )
+
+
+def parse_mapping(mapping):
+    """parse a mapping tuple using specification candy
+
+    Args:
+        mapping (tuple): the tuple contains
+        - feature name
+        - mapping function
+        - argument dictionary
+
+    the function is needed as
+    - instead of a mapping function, shortcut strings "lin", "exp", "log"
+    should be accepted and converted into functions as needed
+    - instead of an argument dictionary a tuple or list of two numbers
+    should be accepted, (for specifying the target range) which should be
+    converted into a proper dictionary
+    the corrected mapping specification is returned
+
+    Returns:
+        tuple: column, mapping function, mapping function argument
+        tuple (apart from "dmin" and "dmax")
+    """
+    col, fun, marg = mapping
+    fn = fnarg_to_fun(fun)
+    if (type(marg) is tuple) or (type(marg) is list):
+        mkwargs = {"y1": marg[0], "y2": marg[1]}
+    if type(marg) is dict:
+        mkwargs = marg
+    return col, fn, mkwargs
+
+
+class ContinuousPMS(BasicPMS):
     def _pepare_synth(self, synth):
         if isinstance(synth, Synth):
             assert (
@@ -83,7 +158,7 @@ class StandardContinuousPMSon(StandardPMSon):
 
         if sort_by_onset:
             col, _, _ = mapping["onset"]
-            df.sort_values(by=col, ascending=True, inplace=True)
+            df = df.sort_values(by=col, ascending=True)
 
         dfkwargs = {"dmin": df.min(), "dmax": df.max()}  # TODO names for dmin, dmax?
         dfkwargs.update(odfkwargs)  # allow overwriting of df
@@ -93,7 +168,9 @@ class StandardContinuousPMSon(StandardPMSon):
 
         max_onset = 0
         for idx in df.index:
-            col, fun, mkwargs = mapping["onset"]
+            # col, fun, mkwargs = mapping["onset"]
+            # fun = fnarg_to_fun(fun)
+            col, fun, mkwargs = parse_mapping(mapping["onset"])
             value = getattr(df, col)[idx]
 
             # get column wise df kwargs
@@ -104,12 +181,14 @@ class StandardContinuousPMSon(StandardPMSon):
 
             params = {}
             for param in [param for param in mapping.keys() if param != "onset"]:
-                col, fun, mkwargs = mapping[param]
-                value = getattr(df, col)[idx]
-
-                dmin, dmax = dfkwargs["dmin"][col], dfkwargs["dmax"][col]
-
-                params[param] = fun(value, **mkwargs, dmin=dmin, dmax=dmax)
+                try:
+                    col, fun, mkwargs = parse_mapping(mapping[param])
+                    value = getattr(df, col)[idx]
+                    dmin, dmax = dfkwargs["dmin"][col], dfkwargs["dmax"][col]
+                    value = fun(value, **mkwargs, dmin=dmin, dmax=dmax)
+                except Exception:
+                    value = mapping[param]
+                params[param] = value
 
             with self._context.at(at + onset, info={"sonecule_id": self.sonecule_id}):
                 self._synth.set(params=params)
@@ -118,9 +197,10 @@ class StandardContinuousPMSon(StandardPMSon):
             at + max_onset + stop_after, info={"sonecule_id": self.sonecule_id}
         ):
             self._synth.stop()
+        return self
 
 
-class StandardDiscretePMSon(StandardPMSon):
+class DiscretePMS(BasicPMS):
     def _pepare_synth(self, synth):
         if isinstance(synth, Synth):
             assert (
@@ -172,7 +252,7 @@ class StandardDiscretePMSon(StandardPMSon):
                 self._synth.start(params=params)
 
 
-class TVOSon(Sonecule):
+class TVOscBankPMS(Sonecule):
     def __init__(self, data, context=None):
         super().__init__(context=context)
 
@@ -217,16 +297,19 @@ class TVOSon(Sonecule):
         # start syns (oscillators)
         with ctx.at(time=at):
             for i, syn in enumerate(self.syns):
-                syn.start(freq=440, amp=0.1, pan=0, lg=0.1)
+                syn.start(freq=440, amp=0, pan=0, lg=0.1)
 
+        dsig = self.data.sig
+        if len(dsig.shape) == 1:
+            dsig = dsig[:, numpy.newaxis]
         # compute parameters for mapping
         # 1. src ranges for pitch mapping
         if map_mode == "channelwise":
-            channel_mins = self.data.sig.min(axis=0)
-            channel_maxs = self.data.sig.max(axis=0)
+            channel_mins = dsig.min(axis=0)
+            channel_maxs = dsig.max(axis=0)
         else:
-            channel_mins = numpy.ones(self.data.channels) * self.data.sig.min(axis=0)
-            channel_maxs = numpy.ones(self.data.channels) * self.data.sig.max(axis=0)
+            channel_mins = numpy.ones(self.data.channels) * dsig.min(axis=0)
+            channel_maxs = numpy.ones(self.data.channels) * dsig.max(axis=0)
 
         if isinstance(pitch_step, numbers.Number):
             pch_centers = [0] * self.data.channels
@@ -243,26 +326,26 @@ class TVOSon(Sonecule):
         global_amp = scn.dbamp(level)
         maxonset = -1
         # modulate oscillators
-        for j, r in enumerate(self.data.sig):
+        for j, r in enumerate(dsig):
             onset = j / self.data.sr / rate
-            change = r - self.data.sig[max(0, j - 1)]
+            change = r - dsig[max(0, j - 1)]
             with ctx.at(time=at + onset):
                 for i, el in enumerate(r):
                     cp = pch_centers[i]
                     dp = pch_wids[i]
-                    pitch = scn.linlin(
+                    pitch = pam.linlin(
                         el, channel_mins[i], channel_maxs[i], cp - dp, cp + dp
                     )
                     self.syns[i].freq = scn.midicps(pitch)
                     if amp_mode == "change":
-                        self.syns[i].amp = scn.linlin(
+                        self.syns[i].amp = pam.linlin(
                             abs(change[i]), 0, 0.8, 0, global_amp
                         )
                     elif amp_mode == "absval":
                         srcmax = max(abs(channel_mins[i]), abs(channel_maxs[i]))
-                        self.syns[i].amp = scn.linlin(abs(el), 0, srcmax, 0, global_amp)
+                        self.syns[i].amp = pam.linlin(abs(el), 0, srcmax, 0, global_amp)
                     elif amp_mode == "value":
-                        self.syns[i].amp = scn.linlin(
+                        self.syns[i].amp = pam.linlin(
                             abs(el), channel_mins[i], channel_maxs[i], 0, global_amp
                         )
             if onset > maxonset:
@@ -282,7 +365,7 @@ class TVOSon(Sonecule):
         self.context.realtime_playback.start(**kwargs)
 
 
-class CPMSonCB(Sonecule):
+class ContinuousCallbackPMS(Sonecule):
     def __init__(self, data, synthdef=None, context=None):
         super().__init__(context=context)
 
@@ -294,10 +377,12 @@ class CPMSonCB(Sonecule):
             # print("no synth definition: use default contsyn")
             scn.SynthDef(
                 "contsyn",
-                """{ | out=0, freq=400, amp=0.1, vibfreq=0, vibintrel=0, numharm=0, pulserate=0, pint=0, pwid=1, pan=0 |
+                """{ | out=0, freq=400, amp=0.1, vibfreq=0, vibintrel=0,
+                        numharm=0, pulserate=0, pint=0, pwid=1, pan=0 |
                 var vib = SinOsc.ar(vibfreq, mul: vibintrel*freq, add: freq);
                 var sig = Blip.ar(vib, mul: amp, numharm: numharm);
-                var pulse = LFPulse.ar(freq: pulserate, iphase: 0.0, width: pwid, mul: pint, add: 1-pint);
+                var pulse = LFPulse.ar(freq: pulserate, iphase: 0.0,
+                                width: pwid, mul: pint, add: 1-pint);
                 Out.ar(out, Pan2.ar(sig * pulse, pan));
             }""",
             ).add()
@@ -315,7 +400,7 @@ class CPMSonCB(Sonecule):
     @staticmethod
     def mapcol(r, name, cmins, cmaxs, dmi, dma):
         """service mapcol function"""
-        return scn.linlin(r[name], cmins[name], cmaxs[name], dmi, dma)
+        return pam.linlin(r[name], cmins[name], cmaxs[name], dmi, dma)
 
     def schedule(
         self,
@@ -345,7 +430,7 @@ class CPMSonCB(Sonecule):
         # modulate parameters by data
         ct = 0
         for idx, r in df.iterrows():
-            onset = scn.linlin(ct, 0, nrows, 0, duration)
+            onset = pam.linlin(ct, 0, nrows, 0, duration)
             with ctx.at(time=at + onset):
                 pdict = callback_fn(r, cmi, cma, self.pdict)
                 self.syn.set(pdict)
@@ -390,7 +475,8 @@ class CPMSonCB(Sonecule):
                 bound_right = self.pdict[p] * 1.5
                 str += (
                     tabstr
-                    + f"{leftstr:15s}\t = mapcol(r, '{feature}', cmi, cma, {bound_left:.2f}, {bound_right:.2f})\n"
+                    + f"{leftstr:15s}\t = mapcol(r, '{feature}'"
+                    + f", cmi, cma, {bound_left:.2f}, {bound_right:.2f})\n"
                 )
                 pass
             else:
