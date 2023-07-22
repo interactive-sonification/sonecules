@@ -12,6 +12,34 @@ from sonecules.base import Sonecule
 
 # TODO rename modules to scorebased son, ... depending on their usage
 
+synonym_list = [
+    ["xr", "within", "xrange"],
+    ["yr", "to", "yrange"],
+    ["fn", "via"],
+    ["col", "column", "n", "name", "f", "feat", "feature"],
+    ["xrq", "within_q", "xqrange"],
+]
+
+
+def pms(*args, **kwargs):
+    """parse mapping specification into mapping directory"""
+    dd = {}
+    if len(args) > 0:
+        # assign positional arguments
+        arg_keys = ["col", "fn", "yr"]
+        for i, arg in enumerate(args):
+            kwargs[arg_keys[i]] = arg
+    for k, v in reversed(kwargs.items()):
+        for syl in synonym_list:
+            if k in syl:
+                k = syl[0]
+                break
+        dd[k] = v
+    # set default function if not given
+    if "fn" not in dd:
+        dd["fn"] = "lin"
+    return dd
+
 
 class BasicPMS(Sonecule):
     def __init__(
@@ -21,7 +49,7 @@ class BasicPMS(Sonecule):
         context=None,
     ):
         super().__init__(context)
-        self._synth = self._pepare_synth(synth)
+        self._synth = self._prepare_synth(synth)
 
         if parameter_specs is None:
             parameter_specs = {}
@@ -40,7 +68,7 @@ class BasicPMS(Sonecule):
         self._synth.metadata["sonecule_id"] = self.sonecule_id
 
     @abstractmethod
-    def _pepare_synth(self, synth):
+    def _prepare_synth(self, synth):
         ...
 
     def synth(self):
@@ -68,7 +96,7 @@ class BasicPMS(Sonecule):
         self.context.realtime_playback.start(**kwargs)
 
 
-def fnarg_to_fun(fun):
+def fnarg_to_fun_old(fun):
     """turn fnargument into function if needed
     fun can be either a string ("lin", "log", "exp") for corresponding mapping
     or a function such as pam.linlin, or a custom function which
@@ -105,6 +133,39 @@ def fnarg_to_fun(fun):
         )
 
 
+def fnarg_to_fun(fun):
+    """turn fnargument into function if needed
+    fun can be either a string ("lin", "log", "exp") for corresponding mapping
+    or a function such as pam.linlin, or a custom function which
+    offers dmin dmax args for the data min/max and y1, y2 args for the resulting
+    parameter args
+
+    Args:
+        fun (str or callable): argument passed in mapping tuple
+
+    Returns:
+        callable: the function that can be used inside the PMS loops
+    """
+
+    def linlinr(value, xr, yr):
+        return pam.linlin(value, x1=xr[0], x2=xr[1], y1=yr[0], y2=yr[1])
+
+    if fun == "lin":
+        return linlinr
+    if fun == "exp":
+        return lambda value, xr, yr: numpy.exp(
+            linlinr(value, xr, [numpy.log(y) for y in yr])
+        )
+
+    if fun == "log":
+        return lambda value, xr, yr: numpy.log(
+            linlinr(value, xr, [numpy.exp(y) for y in yr])
+        )
+    if callable(fun):
+        # varnames = fun.__code__.co_varnames[: fun.__code__.co_argcount]
+        return fun
+
+
 def parse_mapping(mapping):
     """parse a mapping tuple using specification candy
 
@@ -127,7 +188,7 @@ def parse_mapping(mapping):
         tuple (apart from "dmin" and "dmax")
     """
     col, fun, marg = mapping
-    fn = fnarg_to_fun(fun)
+    fn = fnarg_to_fun_old(fun)
     if (type(marg) is tuple) or (type(marg) is list):
         mkwargs = {"y1": marg[0], "y2": marg[1]}
     if type(marg) is dict:
@@ -136,7 +197,7 @@ def parse_mapping(mapping):
 
 
 class ContinuousPMS(BasicPMS):
-    def _pepare_synth(self, synth):
+    def _prepare_synth(self, synth):
         if isinstance(synth, Synth):
             assert (
                 synth.mutable
@@ -201,12 +262,12 @@ class ContinuousPMS(BasicPMS):
 
 
 class DiscretePMS(BasicPMS):
-    def _pepare_synth(self, synth):
+    def _prepare_synth(self, synth):
         if isinstance(synth, Synth):
             assert (
-                not synth.mutable
-            ), "Synth needs to be mutable for continuous Parameter Mapping Sonification"
-            # self._synth = synth
+                synth.mutable
+            ), "Synth can be mutable, but should stop and free itself for DiscretePMS"
+            self._synth = synth
             return synth
         else:
             # self._synth = self.context.synths.create(synth, track=1, mutable=False)
@@ -224,32 +285,76 @@ class DiscretePMS(BasicPMS):
         self.remove()
 
         if sort_by_onset:
-            col, _, _ = mapping["onset"]
-            df.sort_values(by=col, ascending=True, inplace=True)
+            assert "onset" in mapping.keys()
+            pspec = mapping["onset"]
+            if isinstance(pspec, numbers.Number):
+                print("error sort_by onset: no column specified")
+                return self
+            elif isinstance(pspec, str):
+                pspec = {"col": pspec}
+            elif isinstance(pspec, (list, tuple)):
+                pspec = dict(zip(("col", "fn", "yr"), pspec))
+            col = pspec["col"]
+            if col != "INDEX":
+                df = df.sort_values(by=col, ascending=True).copy()
 
-        dfkwargs = {"dmin": df.min(), "dmax": df.max()}  # TODO names for dmin, dmax?
-        dfkwargs.update(odfkwargs)  # allow overwriting of df
+        # get min and max for all features
+        dfkwargs = {"min": df.min(), "max": df.max()}
 
-        for idx in df.index:
-            col, fun, mkwargs = mapping["onset"]
-            value = getattr(df, col)[idx]
+        # create data frame for mapping results
+        num_rows = df.shape[0]
+        dfp = DataFrame(index=range(num_rows))
 
-            # get column wise df kwargs
-            data_min, data_max = dfkwargs["dmin"][col], dfkwargs["dmax"][col]
+        # create output values for all mapped parameters
+        for param, pspec in mapping.items():
+            # turn str or tuple pspec into proper dictionaries
+            if isinstance(pspec, numbers.Number):
+                dfp[param] = pspec
+                continue
+            if isinstance(pspec, str):
+                pspec = {"col": pspec}
+            elif isinstance(pspec, (list, tuple)):
+                pspec = dict(zip(("col", "fn", "yr"), pspec))
+            col = pspec["col"]
+            fun = fnarg_to_fun(pspec["fn"])
+            try:
+                invals = df[col]
+                xr = dfkwargs["min"][col], dfkwargs["max"][col]
+            except KeyError:
+                # print(f"Exception accessing column {col}")
+                if col == "INDEX":
+                    invals = numpy.arange(num_rows)
+                    xr = [0, num_rows]
+            if "xr" in pspec:  # if given, it should overwrite xrange from data
+                xr = pspec["xr"]
+            if "xqr" in pspec:  # it should modify xr using histogram...
+                print("xqr ignored for now")
+            if "yr" in pspec:
+                yr = pspec["yr"]
+            else:
+                print(f"error: param {param} lacks default bounds: set to [0, 1]")
+                yr = [0, 1]
 
-            onset = fun(value, **mkwargs, dmin=data_min, dmax=data_max)
+            tt = pspec.copy()
+            entries_to_remove = ("xr", "yr", "col", "fn")
+            for k in entries_to_remove:
+                tt.pop(k, None)
 
-            params = {}
-            for param in [param for param in mapping.keys() if param != "onset"]:
-                col, fun, mkwargs = mapping[param]
-                value = getattr(df, col)[idx]
+            outvals = fun(invals, xr=xr, yr=yr, **tt)
 
-                dmin, dmax = dfkwargs["dmin"][col], dfkwargs["dmax"][col]
+            if "clip" in pspec:
+                limits = numpy.sort(yr)
+                if pspec["clip"] == "minmax":
+                    outvals.clip(*limits, inplace=True)
+            dfp[param] = outvals
 
-                params[param] = fun(value, **mkwargs, dmin=dmin, dmax=dmax)
-
+        for idx in dfp.index:
+            pvec = dict(dfp.loc[idx])
+            onset = pvec["onset"]
+            del pvec["onset"]
             with self._context.at(at + onset, info={"sonecule_id": self.sonecule_id}):
-                self._synth.start(params=params)
+                self._synth.start(params=pvec)
+        return self
 
 
 class TVOscBankPMS(Sonecule):
