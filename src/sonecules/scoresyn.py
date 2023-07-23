@@ -147,19 +147,19 @@ def fnarg_to_fun(fun):
         callable: the function that can be used inside the PMS loops
     """
 
-    def linlinr(value, xr, yr):
+    def linlinr(value, xr, yr, **kwargs):
         return pam.linlin(value, x1=xr[0], x2=xr[1], y1=yr[0], y2=yr[1])
 
     if fun == "lin":
         return linlinr
     if fun == "exp":
-        return lambda value, xr, yr: numpy.exp(
+        return lambda value, xr, yr, **kwargs: numpy.exp(
             linlinr(value, xr, [numpy.log(y) for y in yr])
         )
 
     if fun == "log":
-        return lambda value, xr, yr: numpy.log(
-            linlinr(value, xr, [numpy.exp(y) for y in yr])
+        return lambda value, xr, yr, **kwargs: numpy.log(
+            linlinr(value, xr, [numpy.exp(y) for y in yr], **kwargs)
         )
     if callable(fun):
         # varnames = fun.__code__.co_varnames[: fun.__code__.co_argcount]
@@ -217,48 +217,204 @@ class ContinuousPMS(BasicPMS):
     ):
         self.remove()
 
-        if sort_by_onset:
-            col, _, _ = mapping["onset"]
-            df = df.sort_values(by=col, ascending=True)
+        df = df.copy()
+        df.reset_index()
+        dfp = _mapping_to_score_dataframe(df, mapping, sort_by_onset, **odfkwargs)
+        self.mapping_df = dfp
 
-        dfkwargs = {"dmin": df.min(), "dmax": df.max()}  # TODO names for dmin, dmax?
-        dfkwargs.update(odfkwargs)  # allow overwriting of df
-
+        # start synths at the beginning
         with self._context.at(at, info={"sonecule_id": self.sonecule_id}):
             self._synth.start()
 
-        max_onset = 0
-        for idx in df.index:
-            # col, fun, mkwargs = mapping["onset"]
-            # fun = fnarg_to_fun(fun)
-            col, fun, mkwargs = parse_mapping(mapping["onset"])
-            value = getattr(df, col)[idx]
-
-            # get column wise df kwargs
-            data_min, data_max = dfkwargs["dmin"][col], dfkwargs["dmax"][col]
-
-            onset = fun(value, **mkwargs, dmin=data_min, dmax=data_max)
-            max_onset = max(onset, max_onset)
-
-            params = {}
-            for param in [param for param in mapping.keys() if param != "onset"]:
-                try:
-                    col, fun, mkwargs = parse_mapping(mapping[param])
-                    value = getattr(df, col)[idx]
-                    dmin, dmax = dfkwargs["dmin"][col], dfkwargs["dmax"][col]
-                    value = fun(value, **mkwargs, dmin=dmin, dmax=dmax)
-                except Exception:
-                    value = mapping[param]
-                params[param] = value
-
+        # process all rows
+        for idx in dfp.index:
+            pvec = dict(dfp.loc[idx])
+            onset = pvec["onset"]
+            del pvec["onset"]
             with self._context.at(at + onset, info={"sonecule_id": self.sonecule_id}):
-                self._synth.set(params=params)
+                self._synth.set(params=pvec)
 
-        with self._context.at(
-            at + max_onset + stop_after, info={"sonecule_id": self.sonecule_id}
-        ):
+        # stop synth at the end
+        max_onset = dfp["onset"].max()
+        stop_time = at + max_onset + stop_after
+        with self._context.at(stop_time, info={"sonecule_id": self.sonecule_id}):
             self._synth.stop()
+
         return self
+
+
+def identity(x):
+    return x
+
+
+def _pre_arg_to_fn(pa):
+    pre_fn = identity
+    if isinstance(pa, str):
+        if pa == "abs":
+
+            def abs_fn(x):
+                return numpy.abs(x)
+
+            pre_fn = abs_fn  # numpy.abs  # lambda x: numpy.abs(x)
+        elif pa == "sign":
+            pre_fn = numpy.sign  # lambda x: numpy.sign(x)
+        elif pa == "diff":
+
+            def series_diff_fn(x):
+                return x.diff()
+
+            pre_fn = series_diff_fn  # lambda x: x.diff()
+        if pa in ["db_to_amp", "dbamp"]:
+            pre_fn = pam.db_to_amp  # lambda x: pam.db_to_amp(x)
+        elif pa in ["midicps", "midi_to_cps"]:
+            pre_fn = pam.midi_to_cps  # lambda x: pam.midi_to_cps(x)
+        elif pa in ["cpsmidi", "cps_to_midi"]:
+            pre_fn = pam.cps_to_midi  # lambda x: pam.cps_to_midi(x)
+        elif pa in ["amp_to_db", "ampdb"]:
+            pre_fn = pam.amp_to_db  # lambda x: pam.amp_to_db(x)
+        elif pa in "floor":
+            pre_fn = numpy.floor  # lambda x: numpy.floor(x)
+    elif callable(pa):
+        pre_fn = pa
+    return pre_fn
+
+
+def _post_arg_to_fn(pa):
+    post_fn = identity
+    if isinstance(pa, str):
+        if pa in ["db_to_amp", "dbamp"]:
+            post_fn = pam.db_to_amp  # lambda x: pam.db_to_amp(x)
+        elif pa in ["midicps", "midi_to_cps"]:
+            post_fn = pam.midi_to_cps  # lambda x: pam.midi_to_cps(x)
+        elif pa in ["cpsmidi", "cps_to_midi"]:
+            post_fn = pam.cps_to_midi  # lambda x: pam.cps_to_midi(x)
+        elif pa in ["amp_to_db", "ampdb"]:
+            post_fn = pam.amp_to_db  # lambda x: pam.amp_to_db(x)
+        elif pa in "floor":
+            post_fn = numpy.floor  # lambda x: numpy.floor(x)
+    elif callable(pa):
+        post_fn = pa
+    return post_fn
+
+
+def _mapping_to_score_dataframe(
+    df: DataFrame,
+    mapping,
+    sort_by_onset=True,
+    **odfkwargs,
+):
+    if sort_by_onset:
+        assert "onset" in mapping.keys()
+        pspec = mapping["onset"]
+        if isinstance(pspec, numbers.Number):
+            print("error sort_by onset: no column specified")
+            return -1
+        elif isinstance(pspec, str):
+            pspec = {"col": pspec}
+        elif isinstance(pspec, (list, tuple)):
+            pspec = dict(zip(("col", "fn", "yr"), pspec))
+        col = pspec["col"]
+        if col != "INDEX":
+            df = df.sort_values(by=col, ascending=True).copy()
+
+    # needed to avoid problems with df.iloc[k:] arguments
+    df = df.reset_index()  # index should become column named 'index'
+    # ToDo: enable working with df.index being a the onset column...
+
+    # get min and max for all features
+    dfkwargs = {"min": df.min(), "max": df.max()}
+
+    # create data frame for mapping results
+    num_rows = df.shape[0]
+    dfp = DataFrame(index=range(num_rows))
+
+    # create output values for all mapped parameters
+    for param, pspec in mapping.items():
+        # turn str or tuple pspec into proper dictionaries
+        if isinstance(pspec, numbers.Number):
+            dfp[param] = pspec
+            continue
+        if isinstance(pspec, str):
+            pspec = {"col": pspec}
+        elif isinstance(pspec, (list, tuple)):
+            pspec = dict(zip(("col", "fn", "yr"), pspec))
+        col = pspec["col"]
+        fun = fnarg_to_fun(pspec["fn"])
+        try:
+            invals = df[col]
+            # print(param, df.shape, df.index)
+            xr = dfkwargs["min"][col], dfkwargs["max"][col]
+        except KeyError:
+            if col == "INDEX":
+                invals = numpy.arange(num_rows)
+                xr = [0, num_rows]
+            else:
+                print(f"Exception: KeyError accessing column {col}")
+                break
+
+        # process optional pre mapping argument
+        pre_fn = None
+        if "pre" in pspec:
+            pa = pspec["pre"]
+            if isinstance(pa, list):
+                pre_fn = [_pre_arg_to_fn(el) for el in pa]
+            else:
+                pre_fn = _pre_arg_to_fn(pa)
+
+        # process optional post mapping argument
+        post_fn = None
+        if "post" in pspec:
+            pa = pspec["post"]
+            if isinstance(pa, list):
+                post_fn = [_post_arg_to_fn(el) for el in pa]
+            else:
+                post_fn = _post_arg_to_fn(pa)
+
+        # process optional xr argument
+        if "xr" in pspec:  # if given, it should overwrite xrange from data
+            xr = pspec["xr"]
+
+        if "xqr" in pspec:  # it should modify xr using histogram...
+            print("xqr not yet implemented")
+
+        # process optional yr argument
+        if "yr" in pspec:
+            yr = pspec["yr"]
+        else:
+            print(f"error: param {param} lacks default bounds: set to [0, 1]")
+            yr = [0, 1]
+
+        # remove extra args for args passed on to mapping (if given as callable)
+        tt = pspec.copy()
+        entries_to_remove = ("xr", "yr", "col", "fn", "pre", "post")
+        for k in entries_to_remove:
+            tt.pop(k, None)
+
+        # apply pre mapping function
+        if callable(pre_fn):
+            invals = pre_fn(invals)
+        elif isinstance(pre_fn, list):
+            for elfn in pre_fn:
+                invals = elfn(invals)
+
+        # apply mapping
+        outvals = fun(invals, xr=xr, yr=yr, **tt)
+
+        # apply clipping
+        if "clip" in pspec:
+            limits = numpy.sort(yr)
+            if pspec["clip"] == "minmax":
+                outvals.clip(*limits, inplace=True)
+
+        # apply post mapping function
+        if callable(post_fn):
+            outvals = post_fn(outvals)
+        elif isinstance(post_fn, list):
+            for elfn in post_fn:
+                outvals = elfn(outvals)
+
+        dfp[param] = outvals
+    return dfp
 
 
 class DiscretePMS(BasicPMS):
@@ -284,76 +440,16 @@ class DiscretePMS(BasicPMS):
     ):
         self.remove()
 
-        if sort_by_onset:
-            assert "onset" in mapping.keys()
-            pspec = mapping["onset"]
-            if isinstance(pspec, numbers.Number):
-                print("error sort_by onset: no column specified")
-                return self
-            elif isinstance(pspec, str):
-                pspec = {"col": pspec}
-            elif isinstance(pspec, (list, tuple)):
-                pspec = dict(zip(("col", "fn", "yr"), pspec))
-            col = pspec["col"]
-            if col != "INDEX":
-                df = df.sort_values(by=col, ascending=True).copy()
+        dfp = _mapping_to_score_dataframe(df, mapping, sort_by_onset, **odfkwargs)
 
-        # get min and max for all features
-        dfkwargs = {"min": df.min(), "max": df.max()}
-
-        # create data frame for mapping results
-        num_rows = df.shape[0]
-        dfp = DataFrame(index=range(num_rows))
-
-        # create output values for all mapped parameters
-        for param, pspec in mapping.items():
-            # turn str or tuple pspec into proper dictionaries
-            if isinstance(pspec, numbers.Number):
-                dfp[param] = pspec
-                continue
-            if isinstance(pspec, str):
-                pspec = {"col": pspec}
-            elif isinstance(pspec, (list, tuple)):
-                pspec = dict(zip(("col", "fn", "yr"), pspec))
-            col = pspec["col"]
-            fun = fnarg_to_fun(pspec["fn"])
-            try:
-                invals = df[col]
-                xr = dfkwargs["min"][col], dfkwargs["max"][col]
-            except KeyError:
-                # print(f"Exception accessing column {col}")
-                if col == "INDEX":
-                    invals = numpy.arange(num_rows)
-                    xr = [0, num_rows]
-            if "xr" in pspec:  # if given, it should overwrite xrange from data
-                xr = pspec["xr"]
-            if "xqr" in pspec:  # it should modify xr using histogram...
-                print("xqr ignored for now")
-            if "yr" in pspec:
-                yr = pspec["yr"]
-            else:
-                print(f"error: param {param} lacks default bounds: set to [0, 1]")
-                yr = [0, 1]
-
-            tt = pspec.copy()
-            entries_to_remove = ("xr", "yr", "col", "fn")
-            for k in entries_to_remove:
-                tt.pop(k, None)
-
-            outvals = fun(invals, xr=xr, yr=yr, **tt)
-
-            if "clip" in pspec:
-                limits = numpy.sort(yr)
-                if pspec["clip"] == "minmax":
-                    outvals.clip(*limits, inplace=True)
-            dfp[param] = outvals
-
+        # generate sonification events
         for idx in dfp.index:
             pvec = dict(dfp.loc[idx])
             onset = pvec["onset"]
             del pvec["onset"]
             with self._context.at(at + onset, info={"sonecule_id": self.sonecule_id}):
                 self._synth.start(params=pvec)
+        self.mapping_df = dfp
         return self
 
 
@@ -423,7 +519,6 @@ class TVOscBankPMS(Sonecule):
                 pch_centers[i] = base_pitch + i * pitch_step
                 pch_wids[i] = pitch_step * pitch_relwid / 2
         elif isinstance(pitch_step, list):
-            # print(len(pitch_step), self.data.channels)
             assert len(pitch_step) == self.data.channels
             pch_centers = numpy.array(pitch_step) + base_pitch
             pch_wids = numpy.diff([0] + pitch_step) * pitch_relwid
@@ -461,13 +556,6 @@ class TVOscBankPMS(Sonecule):
             for syn in self.syns:
                 syn.stop()
         return self
-
-    def start(self, **kwargs):
-        """start sonification rendering by starting the playback
-        kwargs are passed on to start(), so use rate to control speedup, etc.
-        """
-        # print(kwargs)
-        self.context.realtime_playback.start(**kwargs)
 
 
 class ContinuousCallbackPMS(Sonecule):
