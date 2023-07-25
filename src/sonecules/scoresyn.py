@@ -88,13 +88,6 @@ class BasicPMS(Sonecule):
         # clear the current events from the timeline
         ...
 
-    def start(self, **kwargs):
-        """start sonification rendering by starting the playback
-        kwargs are passed on to start(), so use rate to control speedup, etc.
-        """
-        # print(kwargs)
-        self.context.realtime_playback.start(**kwargs)
-
 
 def fnarg_to_fun_old(fun):
     """turn fnargument into function if needed
@@ -556,13 +549,6 @@ class TVOscBankPMS(Sonecule):
             for syn in self.syns:
                 syn.stop()
         return self
-
-    def start(self, **kwargs):
-        """start sonification rendering by starting the playback
-        kwargs are passed on to start(), so use rate to control speedup, etc.
-        """
-        # TODO: decide whether to integrate it generally in Sonecule class
-        self.context.realtime_playback.start(**kwargs)
 
 
 class ContinuousCallbackPMS(Sonecule):

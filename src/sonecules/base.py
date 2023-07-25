@@ -53,3 +53,10 @@ class Sonecule:
             return event.info.get("sonecule_id", None) == self._sonecule_id
 
         self._context.timeline.filter(sonecule_id_filter)
+
+    def start(self, **kwargs):
+        """start sonification rendering by starting the playback
+        kwargs are passed on to start(), so use rate to control speedup, etc.
+        """
+        # print(kwargs)
+        self.context.realtime_playback.start(**kwargs)
