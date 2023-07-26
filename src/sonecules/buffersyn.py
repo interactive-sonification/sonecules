@@ -141,8 +141,12 @@ class BasicAUD(BufferSynth):
             )
         return self
 
-    def set(self, **kwargs):
-        self.synth.set(kwargs)
+    def set(self, at=0, **kwargs):
+        if at == 0:
+            self.synth.set(kwargs)
+        else:
+            with self.context.at(time=at):
+                self.synth.set(kwargs)
 
 
 def _expand_multivariate_channel_kwargs(n, kwargs):
@@ -257,8 +261,9 @@ class MultivariateBasicAUD(Sonecule):
         # synchronous, so bundles should always be processed
         # with reference to the same time!
         kwargs_list = _expand_multivariate_channel_kwargs(len(self.auds), kwargs)
+        time_now = self.context.realtime_playback.time
         for i, aud in enumerate(self.auds):
-            aud.set(**kwargs_list[i])
+            aud.set(at=time_now + self.context.processor.latency, **kwargs_list[i])
 
     def start(self, **kwargs):
         for aud in self.auds:
