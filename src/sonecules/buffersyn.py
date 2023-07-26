@@ -1,8 +1,10 @@
+import numbers
 from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import pandas as pd
 from mesonic.context import Context
+from numpy import linspace
 from pya import Asig
 
 from sonecules.base import Sonecule
@@ -58,7 +60,7 @@ class BufferSynth(Sonecule, ABC):
         asig = Asig(series, label="df-{column}")
         if sr:
             asig.sr = sr  # overwrite sampling rate if wished
-        return cls(asig)
+        return cls(asig, context=context)
 
     @abstractmethod
     def _prepare_synth_defs(self):
@@ -72,7 +74,7 @@ class BufferSynth(Sonecule, ABC):
                 "the selected Context does not offer an {self.synth_name} Synth"
             )
         if channel:
-            self.dasig = self.dasig[:, channel]
+            self.dasig = asig[:, [channel]]
         else:
             self.dasig = asig
         if sr:
@@ -143,17 +145,128 @@ class BasicAUD(BufferSynth):
         self.synth.set(kwargs)
 
 
-# ToDo: check whether/which Bandpass / Band-Reject Filters should be plugged in.
-# SynthDef("test", { | bufnum=1, rate=1, amp=0.1, pan=0,
-#                     bpcf=1000, bpbw=10, brcf=1000, brbw=10,
-#                     startpos=0, att=0.01, rel=0.01, trfreq=0, loop=0 |
-#   var testsig, trig = Impulse.ar(trfreq, add: -0.5);
-#   var pbufsig = PlayBuf.ar(1, bufnum, BufRateScale.kr(bufnum)*rate,
-#                            trig, startpos, loop: loop, doneAction: 2);
-#   testsig = BBandStop.ar(pbufsig, freq: brcf, bw: bpbw, mul: 1.0, add: 0.0);
-#   testsig = BBandPass.ar(testsig, freq: bpcf, bw: brbw, mul: 1.0, add: 0.0);
-# 	Out.ar(0, Pan2.ar(testsig, pan, amp))
-# }).add()
+def _expand_multivariate_channel_kwargs(n, kwargs):
+    """for multivariate set() we which to provide a list argument
+    to be mapped to each channel. This function returns the
+    list of kwargs for the individual items
+    n is the number of dimensions
+    kwargs the dictionary of kwargs that should be individualized"""
+    list_of_kwarg_dicts = []
+    for i in range(n):
+        kwa = {}
+        for k, v in kwargs.items():
+            val = None
+            if isinstance(v, list):
+                if len(v) > i:
+                    val = v[i]
+            else:
+                val = v
+            if val is not None:
+                kwa[k] = val
+        list_of_kwarg_dicts.append(kwa)
+    return list_of_kwarg_dicts
+
+
+class MultivariateBasicAUD(Sonecule):
+    @classmethod
+    def from_df(
+        cls,
+        df: pd.DataFrame,
+        sr: float = None,
+        time_column: Union[str, int] = None,
+        columns: Union[str, int, list] = None,
+        context: Optional[Context] = None,
+    ):
+        """
+        Construct MultivariateBasicAUD from Dataframe.
+
+        Creates MultivariateBasicAud object from Dataframe using a
+        by columns or by index allowing dtype specification.
+
+        Parameters
+        ----------
+        df : Dataframe
+        sr : Number
+            sampling rate in Hz
+        time_column: string or integer
+            name of the column to be used as time index
+            if none is given, equidistant data at sampling rate sr is assumed
+        column : string or Integer
+            Column label to use for data column.
+        context : Optional, passed on to BasicAUD constructor
+
+        Returns
+        -------
+        MultivariateBasicAUD
+
+        See Also
+        --------
+
+        Examples
+        --------
+        """
+        if time_column:
+            print("Warning: time column is noy yet implemented")
+        if type(df) == pd.core.series.Series:
+            df = df.to_frame()
+        elif type(df) == pd.DataFrame:
+            pass
+        else:
+            print("error: expecting dataframe or pandas series")
+
+        # ToDo: check whether pya should accept column names to be integers?
+        asig = Asig(df.values, cn=[str(n) for n in df.columns], label="from_df")
+        if sr:
+            asig.sr = sr  # overwrite sampling rate if wished
+        return cls(asig, channels=columns, context=context)
+
+    def __init__(self, asig, sr=None, channels=None, context=None):
+        if isinstance(channels, str) or isinstance(channels, numbers.Number):
+            channels = [channels]
+        elif channels is None:
+            channels = asig.cn
+        self.auds = []
+        for i, ch in enumerate(channels):
+            aud = BasicAUD(asig, channel=str(ch), context=context)
+            self.auds.append(aud)
+
+    def schedule(
+        self, at=0, rate=1, amp=0.1, pan=0, startpos=0, trfreq=0, loop=0, remove=True
+    ):
+        if isinstance(pan, str):
+            if pan == "spread":
+                pan = list(linspace(-1, 1, len(self.auds), endpoint=True))
+        kwargs_list = _expand_multivariate_channel_kwargs(
+            len(self.auds), dict(amp=amp, pan=pan)
+        )
+        for i, aud in enumerate(self.auds):
+            aud.schedule(
+                at=at,
+                rate=rate,
+                trfreq=trfreq,
+                loop=loop,
+                startpos=startpos,
+                amp=kwargs_list[i]["amp"],
+                pan=kwargs_list[i]["pan"],
+            )
+        return self
+
+    def set(self, **kwargs):
+        # ToDo: check if this causes timing issues
+        # (all channels should be kept strictly)
+        # synchronous, so bundles should always be processed
+        # with reference to the same time!
+        kwargs_list = _expand_multivariate_channel_kwargs(len(self.auds), kwargs)
+        for i, aud in enumerate(self.auds):
+            aud.set(**kwargs_list[i])
+
+    def start(self, **kwargs):
+        for aud in self.auds:
+            aud.start()
+
+    def stop(self, **kwargs):
+        for aud in self.auds:
+            aud.stop()
 
 
 class PhasorAUD(BufferSynth):
