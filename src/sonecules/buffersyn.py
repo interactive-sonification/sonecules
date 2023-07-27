@@ -261,7 +261,7 @@ class MultivariateBasicAUD(Sonecule):
         # synchronous, so bundles should always be processed
         # with reference to the same time!
         kwargs_list = _expand_multivariate_channel_kwargs(len(self.auds), kwargs)
-        time_now = self.context.realtime_playback.time
+        time_now = self.context.playback.time
         for i, aud in enumerate(self.auds):
             aud.set(at=time_now + self.context.processor.latency, **kwargs_list[i])
 
