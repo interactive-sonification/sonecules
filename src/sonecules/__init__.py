@@ -42,13 +42,6 @@ def clear(at=0, rate=1):
     gcc().clear(at=at, rate=rate)
 
 
-def playback():
-    pb = Sonecules.default_playback
-    if pb is None:
-        raise RuntimeError("No current playback")
-    return pb
-
-
 class SoneculeFilter:
     def __init__(self):
         self.deactivated_sonecules = set()
@@ -71,13 +64,8 @@ class Sonecules:
 
         # what if called twice
         # maybe store dict - context: playback, ...
-
         Sonecules.default_context = context
-        Sonecules.default_context.processor.event_filter = SoneculeFilter()
-        # perhaps each context should have a default playback - this would
-        # allow using gcc().default_pb instead of the current playback implementation
-        Sonecules.default_playback = context.create_playback()
-
+        Sonecules.default_context.processor.event_filters.append(SoneculeFilter())
         if isinstance(Sonecules.default_context.backend, BackendSC3NB):
             Sonecules.init_sc3nb_context(context)
 

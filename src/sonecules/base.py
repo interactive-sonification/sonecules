@@ -16,7 +16,7 @@ class Sonecule:
         # TODO require or better ensure each synth created in a sonecule gets the
         # metadata set to include the sonecule_id so it can be filtere
 
-        # TODO ensure self._context.processor.event_filter has a sonecule filter
+        # TODO ensure self._context.processor.event_filters has a sonecule filter
         # needed for active
 
     @property
@@ -31,18 +31,18 @@ class Sonecule:
     def active(self):
         return (
             self.sonecule_id
-            in self._context.processor.event_filter.deactivated_sonecules
+            in self._context.processor.event_filters.deactivated_sonecules
         )
 
     @active.setter
     def active(self, value):
         assert isinstance(value, bool)
         if value:  # this sonecule should not be part of the timeline
-            self._context.processor.event_filter.deactivated_sonecules.add(
+            self._context.processor.event_filters.deactivated_sonecules.add(
                 self.sonecule_id
             )
         else:
-            self._context.processor.event_filter.deactivated_sonecules.discard(
+            self._context.processor.event_filters.deactivated_sonecules.discard(
                 self.sonecule_id
             )
 
