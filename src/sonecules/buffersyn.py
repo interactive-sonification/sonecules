@@ -118,7 +118,7 @@ class BufferSynth(Sonecule, ABC):
 class BasicAUD(BufferSynth):
     def _prepare_synth_defs(self):
         self.synth_name = "playbuf_aud"
-        self.context.synths.add_synth_def(
+        self.context.synths.add_buffer_synth_def(
             self.synth_name,
             r"""
             { | bufnum={{BUFNUM}}, rate=1, amp=0.1, pan=0,
@@ -277,7 +277,7 @@ class MultivariateBasicAUD(Sonecule):
 class PhasorAUD(BufferSynth):
     def _prepare_synth_defs(self):
         self.synth_name = "phasor_aud"
-        self.context.synths.add_synth_def(
+        self.context.synths.add_buffer_synth_def(
             self.synth_name,
             r"""{
     | out=0, bufnum={{BUFNUM}}, rate=1, amp=0.1, pan=0,
