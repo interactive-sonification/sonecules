@@ -2,7 +2,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from sc3nb import dbamp, linlin
+from pyamapping import db_to_amp, linlin
 
 # for distance calculation in the data Sonogram
 from scipy.spatial import ConvexHull
@@ -11,7 +11,7 @@ from scipy.spatial.distance import cdist
 from sonecules.base import Sonecule
 
 
-class DataSonogram(Sonecule):
+class DataSonogramMBS(Sonecule):
     def __init__(
         self,
         df,
@@ -19,11 +19,34 @@ class DataSonogram(Sonecule):
         y,
         label,
         max_duration=1.5,
-        spring_synth="s1",
+        spring_synth="springmass",
         trigger_synth="noise",
+        rtime=0.5,
+        level=-6,
         context=None,
     ):
         super().__init__(context=context)
+
+        self.context.synths.add_synth_def(
+            "noise",
+            r"""
+            { |out=0, freq=2000, rq=0.02, amp=0.3, dur=1, pan=0 |
+                var noise = WhiteNoise.ar(10);
+                var filtsig = BPF.ar(noise, freq, rq);
+                var env = Line.kr(1, 0, dur, doneAction: 2).pow(4);
+                Out.ar(out, Pan2.ar(filtsig, pan, env*amp));
+            }""",
+        )
+        self.context.synths.add_synth_def(
+            "springmass",
+            r"""
+            { |out=0, freq=2000, amp=0.3, rtime=0.5, pan=0 |
+                var exc = Impulse.ar(0);
+                var sig = Klank.ar(`[[freq], [0.2], [rtime]], exc);
+                DetectSilence.ar(exc+sig, doneAction: Done.freeSelf);
+                Out.ar(out, Pan2.ar(sig, pan, amp));
+            }""",
+        )
 
         # prepare synths
         self.trigger_synth = self.context.synths.create(
@@ -57,6 +80,8 @@ class DataSonogram(Sonecule):
 
         # set model parameter
         self.max_duration = max_duration
+        self.rtime = rtime
+        self.level = level
 
         # prepare plot
         self.fig = plt.figure(figsize=(5, 5))
@@ -79,15 +104,20 @@ class DataSonogram(Sonecule):
     def create_shockwave(self, click_xy):
         self.context.clear()
 
+        # play trigger "shockwave" sound sample
         with self.context.now() as start_time:
             self.trigger_synth.start()
+
         # find the point that is the nearest to the click location
         center_idx = np.argmin(np.linalg.norm(self.xy_data - click_xy, axis=1))
         center = self.data[center_idx]
+
         # get the distances from the other points to this point
         distances_to_center = np.linalg.norm(self.data - center, axis=1)
+
         # get idx sorted by distances
         order_of_points = np.argsort(distances_to_center)
+
         # for each point create a sound using the spring synth
         for idx in order_of_points:
             distance = distances_to_center[idx]
@@ -96,8 +126,10 @@ class DataSonogram(Sonecule):
             with self.context.at(start_time + onset):
                 self.spring_synth.start(
                     freq=2 * (400 + 100 * nlabel),
-                    amp=dbamp(linlin(distance, 0, self.max_distance, -10, -30)),
+                    amp=db_to_amp(
+                        self.level + linlin(distance, 0, self.max_distance, 0, -30)
+                    ),
                     pan=[-1, 1][int(self.xy_data[idx, 0] - click_xy[0] > 0)],
-                    dur=0.04,
+                    rtime=self.rtime,
                     info={"label": self.labels[idx]},
                 )
