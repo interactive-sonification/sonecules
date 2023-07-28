@@ -83,10 +83,8 @@ class Sonecules:
 
     @staticmethod
     def init_sc3nb_context(context: Context):
-        import sc3nb as scn
-
         assert isinstance(context.backend, BackendSC3NB)
-        backend: BackendSC3NB = context.backend
+        # backend: BackendSC3NB = context.backend
 
         # How could this preparation be placed by the relevant Sonecule instead of here?
         # perhaps using a static method for this at the classes named e.g. prepare()
@@ -101,13 +99,3 @@ class Sonecules:
     var playbufs = PlayBuf.ar(nch, bufnum, BufRateScale.kr(bufnum)*rate, doneAction: 2);
     Out.ar(0, (sines * playbufs).sum * amp!2 )
 }"""
-
-        scn.SynthDef(
-            "noise",
-            r"""
-{ |out=0, freq=2000, rq=0.02, amp=0.3, dur=1, pos=0 |
-    Out.ar(out, Pan2.ar(
-        BPF.ar(WhiteNoise.ar(10), freq, rq)
-        * Line.kr(1, 0, dur, doneAction: 2).pow(4), pos, amp));
-}""",
-        ).add(server=backend.sc.server)

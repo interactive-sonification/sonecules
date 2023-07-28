@@ -59,3 +59,4 @@ class Sonecule:
         kwargs are passed on to start(), so use rate to control speedup, etc.
         """
         self.context.playback.start(**kwargs)
+        return self

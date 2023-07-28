@@ -195,8 +195,8 @@ class MultivariateBasicAUD(Sonecule):
         time_column: string or integer
             name of the column to be used as time index
             if none is given, equidistant data at sampling rate sr is assumed
-        column : string or Integer
-            Column label to use for data column.
+        columns : string or Integer or list of channel names
+            Column label(s) to use for data column.
         context : Optional, passed on to BasicAUD constructor
 
         Returns

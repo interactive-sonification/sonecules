@@ -558,10 +558,9 @@ class ContinuousCallbackPMS(Sonecule):
         self.data = data
         self.synthdef = synthdef
         if self.synthdef:
-            scn.SynthDef("contsyn", synthdef).add()
+            self.context.synths.add_synth_def("contsyn", synthdef)
         else:
-            # print("no synth definition: use default contsyn")
-            scn.SynthDef(
+            self.context.synths.add_synth_def(
                 "contsyn",
                 """{ | out=0, freq=400, amp=0.1, vibfreq=0, vibintrel=0,
                         numharm=0, pulserate=0, pint=0, pwid=1, pan=0 |
@@ -571,7 +570,7 @@ class ContinuousCallbackPMS(Sonecule):
                                 width: pwid, mul: pint, add: 1-pint);
                 Out.ar(out, Pan2.ar(sig * pulse, pan));
             }""",
-            ).add()
+            )
 
         ctx = self.context
 
@@ -624,8 +623,6 @@ class ContinuousCallbackPMS(Sonecule):
                 maxonset = onset
             ct += 1
 
-        # stop oscillators
-
         # stop oscillator at end
         with ctx.at(time=at + maxonset):
             self.syn.stop()
@@ -668,9 +665,11 @@ class ContinuousCallbackPMS(Sonecule):
             else:
                 str += tabstr + f"pp['{p}']\t = mapcol(r, 'colname', cmi, cma, 1, 2)\n"
             ""
+        str += tabstr + "return pp"
         print(str)
         print(
             "# create sonification e.g. by using\n"
-            + "scb.schedule(at=0, duration=2, callback_fn=callback_fn).start(rate=1)\n"
+            + "sn.gcc().timeline.reset()"
+            + "# scb.schedule(at=0, duration=5, callback_fn=cbfn).start(rate=1)\n"
         )
         return str
