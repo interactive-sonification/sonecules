@@ -74,7 +74,12 @@ class BufferSynth(Sonecule, ABC):
                 "the selected Context does not offer an {self.synth_name} Synth"
             )
         if channel:
-            self.dasig = asig[:, [channel]]
+            if isinstance(channel, numbers.Number):
+                self.dasig = asig[:, [channel]]
+            elif isinstance(channel, list):
+                self.dasig = asig[:, channel]
+            else:  # assume it is a slice
+                self.dasig = asig[:, channel]
         else:
             self.dasig = asig
         if sr:
@@ -321,6 +326,106 @@ class PhasorAUD(BufferSynth):
         self.synth.set(kwargs)
 
 
-class TimbralSon(BufferSynth):
+class TimbralPMS(BufferSynth):
+    @classmethod
+    def from_df(
+        cls,
+        df: pd.DataFrame,
+        sr: float = None,
+        time_column: Union[str, int] = None,
+        columns: Union[str, int, list] = None,
+        context: Optional[Context] = None,
+    ):
+        """
+        Construct TimbralPMS from Dataframe.
+
+        Creates TimbralPMS object from Dataframe using a
+        by columns or by index allowing dtype specification.
+
+        Parameters
+        ----------
+        df : Dataframe
+        sr : Number
+            sampling rate in Hz
+        time_column: string or integer
+            name of the column to be used as time index
+            if none is given, equidistant data at sampling rate sr is assumed
+        columns : string or Integer or list of channel names
+            Column label(s) to use for data column.
+        context : Optional, passed on to BasicAUD constructor
+
+        Returns
+        -------
+        TimbralPMS
+
+        See Also
+        --------
+
+        Examples
+        --------
+        """
+        if time_column:
+            print("Warning: time column is noy yet implemented")
+        if type(df) == pd.core.series.Series:
+            df = df.to_frame()
+        elif type(df) == pd.DataFrame:
+            pass
+        else:
+            print("error: expecting dataframe or pandas series")
+
+        # ToDo: check whether pya should accept column names to be integers?
+        asig = Asig(df.values, cn=[str(n) for n in df.columns], label="from_df")
+        if sr:
+            asig.sr = sr  # overwrite sampling rate if wished
+        return cls(asig, channels=columns, context=context)
+
     def _prepare_synth_defs(self):
-        self.synth_name = "timbralson"
+        self.synth_name = "timbralPMS"
+        self.context.synths.add_buffer_synth_def(
+            self.synth_name,
+            r"""
+{ | bufnum={{BUFNUM}}, freq=90, rate=1, amp=0.1, pan=0, startpos=0, trfreq=0, loop=0 |
+    var nch = {{NUM_CHANNELS}};
+    var sines = SinOsc.ar(nch.collect{|i| freq*(i+1)});
+    var playbufs = PlayBuf.ar(nch, bufnum, BufRateScale.kr(bufnum)*rate,
+        Impulse.ar(trfreq)-0.1, startPos: startpos, loop: loop, doneAction: 2);
+    var sig = (sines * playbufs).sum;
+    Out.ar(0, Pan2.ar(sig, pan, amp))
+}""",
+        )
+
+    def __init__(self, asig, sr=None, channels=None, context=None):
+        super().__init__(asig, sr, channels, context=context)
+
+    def schedule(
+        self,
+        at=0,
+        rate=1,
+        freq=50,
+        amp=0.1,
+        pan=0,
+        startpos=0,
+        trfreq=0,
+        loop=0,
+        remove=True,
+    ):
+        if remove:
+            self.remove()
+        with self.context.at(time=at):
+            self.synth.start(
+                rate=rate,
+                freq=freq,
+                amp=amp,
+                pan=pan,
+                startpos=startpos,
+                trfreq=trfreq,
+                loop=loop,
+            )
+        return self
+
+    def set(self, at=0, **kwargs):
+        if at == 0:
+            self.synth.set(kwargs)
+        else:
+            with self.context.at(time=at):
+                self.synth.set(kwargs)

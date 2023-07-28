@@ -73,17 +73,3 @@ class Sonecules:
     def init_sc3nb_context(context: Context):
         assert isinstance(context.backend, BackendSC3NB)
         # backend: BackendSC3NB = context.backend
-
-        # How could this preparation be placed by the relevant Sonecule instead of here?
-        # perhaps using a static method for this at the classes named e.g. prepare()
-        # but when should/could these be called?
-
-        context.synths.buffer_synthdefs[
-            "timbralson"
-        ] = r"""
-{ |bufnum={{BUFNUM}}, f0=90, amp=0.1, rate=1 |
-    var nch = {{NUM_CHANNELS}};
-    var sines = SinOsc.ar(nch.collect{|i| f0*rate*(i+1)});
-    var playbufs = PlayBuf.ar(nch, bufnum, BufRateScale.kr(bufnum)*rate, doneAction: 2);
-    Out.ar(0, (sines * playbufs).sum * amp!2 )
-}"""
