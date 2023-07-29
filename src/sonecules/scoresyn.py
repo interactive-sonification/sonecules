@@ -454,13 +454,13 @@ class TVOscBankPMS(Sonecule):
         ctx = self.context
 
         # create SynthDef for tvosc
-        scn.SynthDef(
+        context.synths.add_synth_def(
             "tvosc-sine-1ch",
             """{ | out=0, freq=400, amp=0.1, pan=0, lg=0.1 |
             var sig = SinOsc.ar(freq.lag(lg), mul: amp.lag(lg));
             Out.ar(out, Pan2.ar(sig, pan));
         }""",
-        ).add()
+        )
 
         ctx._backend.sc.server.sync()
 
