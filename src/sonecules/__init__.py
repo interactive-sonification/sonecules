@@ -65,7 +65,8 @@ class Sonecules:
         # what if called twice
         # maybe store dict - context: playback, ...
         Sonecules.default_context = context
-        Sonecules.default_context.processor.event_filters.append(SoneculeFilter())
+        Sonecules.event_filter = SoneculeFilter()
+        Sonecules.default_context.processor.event_filters.append(Sonecules.event_filter)
         if isinstance(Sonecules.default_context.backend, BackendSC3NB):
             Sonecules.init_sc3nb_context(context)
 

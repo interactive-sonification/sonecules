@@ -31,22 +31,15 @@ class Sonecule(ABC):
 
     @property
     def active(self):
-        return (
-            self.sonecule_id
-            in self._context.processor.event_filters.deactivated_sonecules
-        )
+        return self.sonecule_id not in Sonecules.event_filter.deactivated_sonecules
 
     @active.setter
-    def active(self, value):
-        assert isinstance(value, bool)
-        if value:  # this sonecule should not be part of the timeline
-            self._context.processor.event_filters.deactivated_sonecules.add(
-                self.sonecule_id
-            )
+    def active(self, active):
+        assert isinstance(active, bool)
+        if active:  # this sonecule should not be part of the timeline
+            Sonecules.event_filter.deactivated_sonecules.discard(self.sonecule_id)
         else:
-            self._context.processor.event_filters.deactivated_sonecules.discard(
-                self.sonecule_id
-            )
+            Sonecules.event_filter.deactivated_sonecules.add(self.sonecule_id)
 
     def remove(self):
         """Remove events belonging to this Sonecule from the mesonic Timeline"""
