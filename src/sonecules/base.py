@@ -1,4 +1,5 @@
 import uuid
+from abc import ABC, abstractmethod
 from typing import Optional
 
 from mesonic.context import Context
@@ -7,12 +8,13 @@ from mesonic.events import Event
 from sonecules import Sonecules
 
 
-class Sonecule:
-    def __init__(self, context: Optional[Context] = None):
+class Sonecule(ABC):
+    def __init__(self, context: Optional[Context] = None, sonecule_id=None):
         if context is None:
             context = Sonecules.default_context
         self._context: Context = context
-        self._sonecule_id: uuid.UUID = uuid.uuid4()
+        self._sonecule_id = uuid.uuid4() if sonecule_id is None else sonecule_id
+        self._prepare_synth_defs()
         # TODO require or better ensure each synth created in a sonecule gets the
         # metadata set to include the sonecule_id so it can be filtere
 
@@ -60,3 +62,7 @@ class Sonecule:
         """
         self.context.playback.start(**kwargs)
         return self
+
+    @abstractmethod
+    def _prepare_synth_defs(self):
+        ...
