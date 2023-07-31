@@ -673,3 +673,125 @@ class ContinuousCallbackPMS(Sonecule):
             + "# scb.schedule(at=0, duration=5, callback_fn=cbfn).start(rate=1)\n"
         )
         return str
+
+
+class DiscreteCallbackPMS(Sonecule):
+    def _prepare_synth_defs(self):
+        self.synth_name = "dcbpms"
+        self.context.synths.add_synth_def(
+            self.synth_name,
+            r"""{ | out=0, freq=400, dur=0.4, att=0.001, rel=0.5, amp=0,
+        vibfreq=0, vibir=0, sharp=0, pan=0 |
+var vib = SinOsc.ar(vibfreq, mul: vibir*freq, add: freq);
+var sig = HPF.ar(Formant.ar(vib, vib, bwfreq: vib*(sharp+1), mul: amp), 40);
+var env = EnvGen.kr(Env.new([0,1,1,0], [att, dur-att-rel, rel]), doneAction:2);
+Out.ar(out, Pan2.ar(sig, pan, env));
+}""",
+        )
+
+    def __init__(self, data, synth_name=None, context=None):
+        super().__init__(context=context)
+
+        self.data = data
+        self.synth_name = synth_name
+        if self.synth_name:
+            pass
+        else:
+            self._prepare_synth_defs()
+        self.context._backend.sc.server.sync()
+
+        # ToDo: check howto get the pdict items without creating an instance?
+        self.syn = self.context.synths.create(
+            name=self.synth_name, track=1, mutable=False
+        )
+        self.pdict = {}
+        for k, v in self.syn.params.items():
+            self.pdict[k] = v.default
+
+    @staticmethod
+    def mapcol(r, name, cmins, cmaxs, dmi, dma):
+        """service mapcol function"""
+        return pam.linlin(r[name], cmins[name], cmaxs[name], dmi, dma)
+
+    def schedule(
+        self,
+        at=0,
+        callback_fn=None,
+        remove=True,
+    ):
+        # here schedule function, with argument for replace default to true
+        # "change"
+        ctx = self.context
+        if remove:
+            self.remove()
+
+        # create synths
+        # with ctx.at(time=at):
+        #     self.syn.start(**self.pdict)
+
+        # compute parameters for mapping
+        # 1. src ranges for pitch mapping
+
+        df = self.data
+        cmi = df.min()
+        cma = df.max()
+
+        # spawn synths for each row
+        for idx, r in df.iterrows():
+            pdict = callback_fn(r, cmi, cma, self.pdict)
+            onset = pdict["onset"]
+            del pdict["onset"]
+            with ctx.at(time=at + onset, info={"sonecule_id": self.sonecule_id}):
+                self.syn.start(params=pdict)
+        return self
+
+    def create_callback_template(self, auto_assign=False, duration=5):
+        df = self.data
+        tabstr = "    "
+        str = "def cbfn(r, cmi, cma, pp):\n"
+        str += tabstr + "# columns are:"
+        feature_list = []
+        for i, col in enumerate(df.columns):
+            feature = col
+            feature_list.append(feature)
+            str += f"'{col}' "
+            if (i + 1) % 4 == 0:
+                str += "\n" + tabstr + "# "
+        str += "\n"
+
+        fct = 0
+        # go through parameters, with onset being the first
+        parameter_names = ["onset"] + list(self.pdict.keys())
+        if "out" in list(self.pdict.keys()):
+            parameter_names.remove("out")
+        self.pdict["onset"] = 0  # set a default value for onset
+
+        for p in parameter_names:
+            if auto_assign:
+                # assign features automatically
+                feature = feature_list[fct]
+                fct += 1
+                if fct == len(feature_list) - 1:
+                    fct = 0
+                leftstr = f"pp['{p}']"
+                bound_left = self.pdict[p] * 0.75
+                bound_right = self.pdict[p] * 1.5
+                if p == "onset":
+                    bound_right = duration
+                str += (
+                    tabstr
+                    + f"{leftstr:15s}\t = mapcol(r, '{feature}'"
+                    + f", cmi, cma, {bound_left:.2f}, {bound_right:.2f})\n"
+                )
+                pass
+            else:
+                str += tabstr + f"pp['{p}']\t = mapcol(r, 'colname', cmi, cma, 1, 2)\n"
+            ""
+        str += tabstr + "return pp"
+        print(str)
+        print(
+            "# create sonification e.g. by using\n"
+            + "sn.gcc().timeline.reset()\n"
+            + "# scb.schedule(at=0, callback_fn=cbfn).start(rate=1)\n"
+        )
+        return str
