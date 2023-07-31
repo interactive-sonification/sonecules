@@ -85,7 +85,7 @@ class BasicPMS(Sonecule):
         **odfkwargs,
     ):  # odfkwargs is a bad name
         # stop after =~~~ release time
-        # clear the current events from the timeline
+        # reset the current events from the timeline
         ...
 
 

@@ -102,7 +102,7 @@ class DataSonogramMBS(Sonecule):
         self.fig.canvas.mpl_connect("button_press_event", onclick)
 
     def create_shockwave(self, click_xy):
-        self.context.clear()
+        self.context.reset()
 
         # play trigger "shockwave" sound sample
         with self.context.now() as start_time:
