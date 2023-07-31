@@ -23,30 +23,10 @@ class DataSonogramMBS(Sonecule):
         trigger_synth="noise",
         rtime=0.5,
         level=-6,
+        play_trigger_sound=True,
         context=None,
     ):
         super().__init__(context=context)
-
-        self.context.synths.add_synth_def(
-            "noise",
-            r"""
-            { |out=0, freq=2000, rq=0.02, amp=0.3, dur=1, pan=0 |
-                var noise = WhiteNoise.ar(10);
-                var filtsig = BPF.ar(noise, freq, rq);
-                var env = Line.kr(1, 0, dur, doneAction: 2).pow(4);
-                Out.ar(out, Pan2.ar(filtsig, pan, env*amp));
-            }""",
-        )
-        self.context.synths.add_synth_def(
-            "springmass",
-            r"""
-            { |out=0, freq=2000, amp=0.3, rtime=0.5, pan=0 |
-                var exc = Impulse.ar(0);
-                var sig = Klank.ar(`[[freq], [0.2], [rtime]], exc);
-                DetectSilence.ar(exc+sig, doneAction: Done.freeSelf);
-                Out.ar(out, Pan2.ar(sig, pan, amp));
-            }""",
-        )
 
         # prepare synths
         self.trigger_synth = self.context.synths.create(
@@ -79,9 +59,12 @@ class DataSonogramMBS(Sonecule):
         self.max_distance = hull_distances.max()
 
         # set model parameter
+        self.play_trigger_sound = play_trigger_sound
         self.max_duration = max_duration
         self.rtime = rtime
         self.level = level
+
+        self._latency = 0.01 + self.context.playback.clock.sleep_time
 
         # prepare plot
         self.fig = plt.figure(figsize=(5, 5))
@@ -101,12 +84,39 @@ class DataSonogramMBS(Sonecule):
 
         self.fig.canvas.mpl_connect("button_press_event", onclick)
 
+    def _prepare_synth_defs(self):
+        super()._prepare_synth_defs()
+
+        self.context.synths.add_synth_def(
+            "noise",
+            r"""
+            { |out=0, freq=2000, rq=0.02, amp=0.3, dur=1, pan=0 |
+                var noise = WhiteNoise.ar(10);
+                var filtsig = BPF.ar(noise, freq, rq);
+                var env = Line.kr(1, 0, dur, doneAction: 2).pow(4);
+                Out.ar(out, Pan2.ar(filtsig, pan, env*amp));
+            }""",
+        )
+        self.context.synths.add_synth_def(
+            "springmass",
+            r"""
+            { |out=0, freq=2000, amp=0.3, rtime=0.5, pan=0 |
+                var exc = Impulse.ar(0);
+                var sig = Klank.ar(`[[freq], [0.2], [rtime]], exc);
+                DetectSilence.ar(exc+sig, doneAction: Done.freeSelf);
+                Out.ar(out, Pan2.ar(sig, pan, amp));
+            }""",
+        )
+
     def create_shockwave(self, click_xy):
         self.context.reset()
 
         # play trigger "shockwave" sound sample
-        with self.context.now() as start_time:
-            self.trigger_synth.start()
+        if self.play_trigger_sound:
+            with self.context.now(self._latency) as start_time:
+                self.trigger_synth.start()
+        else:
+            start_time = self.context.playback.time
 
         # find the point that is the nearest to the click location
         center_idx = np.argmin(np.linalg.norm(self.xy_data - click_xy, axis=1))
