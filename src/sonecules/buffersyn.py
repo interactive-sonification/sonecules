@@ -7,10 +7,10 @@ from mesonic.context import Context
 from numpy import linspace
 from pya import Asig
 
-from sonecules.base import Sonecule
+from sonecules.base import SchedulableSonecule
 
 
-class BaseAUD(Sonecule):
+class BaseAUD(SchedulableSonecule):
     @classmethod
     def from_df(
         cls,
@@ -97,39 +97,6 @@ class BaseAUD(Sonecule):
         """
         self.dasig = self.dasig.resample(target_sr=target_sr, rate=rate, kind=kind)
         self._create_buffers(self.dasig)
-        return self
-
-    @abstractmethod
-    def schedule(self, at: float = 0.0, **kwargs):
-        """Schedule the Sonification.
-
-        Parameters
-        ----------
-        at : float, optional
-            the start time of the Sonification, by default 0.0
-
-        Returns
-        -------
-        self
-        """
-        ...
-
-    def reschedule(self, at: float = 0.0, **kwargs):
-        """Reschedule the Sonification.
-
-        reschedule = remove + schedule
-
-        Parameters
-        ----------
-        at : float, optional
-            the start time of the Sonification, by default 0.0
-
-        Returns
-        -------
-        self
-        """
-        self.remove()
-        self.schedule(at=at, **kwargs)
         return self
 
     @abstractmethod

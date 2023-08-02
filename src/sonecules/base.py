@@ -59,3 +59,38 @@ class Sonecule(ABC):
     @abstractmethod
     def _prepare_synth_defs(self):
         ...
+
+
+class SchedulableSonecule(Sonecule):
+    @abstractmethod
+    def schedule(self, at: float = 0.0, **kwargs):
+        """Schedule the Sonification.
+
+        Parameters
+        ----------
+        at : float, optional
+            the start time of the Sonification, by default 0.0
+
+        Returns
+        -------
+        self
+        """
+        ...
+
+    def reschedule(self, at: float = 0.0, **kwargs):
+        """Reschedule the Sonification.
+
+        reschedule = remove + schedule
+
+        Parameters
+        ----------
+        at : float, optional
+            the start time of the Sonification, by default 0.0
+
+        Returns
+        -------
+        self
+        """
+        self.remove()
+        self.schedule(at=at, **kwargs)
+        return self

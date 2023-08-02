@@ -8,7 +8,7 @@ import sc3nb as scn
 from mesonic.synth import Synth
 from pandas import DataFrame
 
-from sonecules.base import Sonecule
+from sonecules.base import SchedulableSonecule
 
 # TODO rename modules to scorebased son, ... depending on their usage
 
@@ -41,7 +41,7 @@ def pms(*args, **kwargs):
     return dd
 
 
-class BasicPMS(Sonecule):
+class BasicPMS(SchedulableSonecule):
     def __init__(
         self,
         synth: str = "s2",
@@ -446,7 +446,7 @@ class DiscretePMS(BasicPMS):
         return self
 
 
-class TVOscBankPMS(Sonecule):
+class TVOscBankPMS(SchedulableSonecule):
     def __init__(self, data, context=None):
         super().__init__(context=context)
 
@@ -551,7 +551,7 @@ class TVOscBankPMS(Sonecule):
         return self
 
 
-class ContinuousCallbackPMS(Sonecule):
+class ContinuousCallbackPMS(SchedulableSonecule):
     def __init__(self, data, synthdef=None, context=None):
         super().__init__(context=context)
 
@@ -675,7 +675,7 @@ class ContinuousCallbackPMS(Sonecule):
         return str
 
 
-class DiscreteCallbackPMS(Sonecule):
+class DiscreteCallbackPMS(SchedulableSonecule):
     def _prepare_synth_defs(self):
         self.synth_name = "dcbpms"
         self.context.synths.add_synth_def(
