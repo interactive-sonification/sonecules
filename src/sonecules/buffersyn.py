@@ -34,7 +34,7 @@ class BaseAUD(SchedulableSonecule):
         time_column: string or integer
             name of the column to be used as time index
             if none is given, equidistant data at sampling rate sr is assumed
-        column : string or Integer
+        columns : string or Integer
             Column label to use for data column.
 
         Returns
@@ -106,7 +106,7 @@ class BaseAUD(SchedulableSonecule):
     @abstractmethod
     def stop(self, remove=False):
         if remove:
-            self.remove
+            self.remove()
 
 
 class BufferSynth(BaseAUD):
@@ -130,7 +130,7 @@ class BufferSynth(BaseAUD):
         return self
 
     def set(self, **kwargs):
-        super().stop()
+        super().set()
         self.synth.set(**kwargs)
 
     def stop(self, remove=False):
