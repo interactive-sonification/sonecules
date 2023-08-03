@@ -12,7 +12,7 @@ from sonecules.base import SchedulableSonecule
 
 # TODO rename modules to scorebased son, ... depending on their usage
 
-synonym_list = [
+mapping_spec_synonyms = [
     ["xr", "within", "xrange"],
     ["yr", "to", "yrange"],
     ["fn", "via"],
@@ -22,7 +22,7 @@ synonym_list = [
 
 
 def pms(*args, **kwargs):
-    """parse mapping specification into mapping directory"""
+    """Create parameter mapping specification from provided arguments"""
     dd = {}
     if len(args) > 0:
         # assign positional arguments
@@ -30,7 +30,7 @@ def pms(*args, **kwargs):
         for i, arg in enumerate(args):
             kwargs[arg_keys[i]] = arg
     for k, v in reversed(kwargs.items()):
-        for syl in synonym_list:
+        for syl in mapping_spec_synonyms:
             if k in syl:
                 k = syl[0]
                 break
@@ -67,6 +67,11 @@ class BasicPMS(SchedulableSonecule):
         # creation here should add metadata which then is added to each produced event
         self._synth.metadata["sonecule_id"] = self.sonecule_id
 
+    def _prepare_synth_defs(self):
+        # In Parameter Mapping Sonification we currently offer
+        # no default Synth Definitions
+        ...
+
     @abstractmethod
     def _prepare_synth(self, synth):
         ...
@@ -89,45 +94,9 @@ class BasicPMS(SchedulableSonecule):
         ...
 
 
-def fnarg_to_fun_old(fun):
-    """turn fnargument into function if needed
-    fun can be either a string ("lin", "log", "exp") for corresponding mapping
-    or a function such as pam.linlin, or a custom function which
-    offers dmin dmax args for the data min/max and y1, y2 args for the resulting
-    parameter args
+def funarg_to_fun(fun):
+    """turn function argument into function if needed
 
-    Args:
-        fun (str or callable): argument passed in mapping tuple
-
-    Returns:
-        callable: the function that can be used inside the PMS loops
-    """
-    if fun == "lin":
-        return lambda value, dmin, dmax, y1, y2: pam.linlin(
-            value, x1=dmin, x2=dmax, y1=y1, y2=y2
-        )
-    if fun == "exp":
-        return lambda value, dmin, dmax, y1, y2: numpy.exp(
-            pam.linlin(value, x1=dmin, x2=dmax, y1=numpy.log(y1), y2=numpy.log(y2))
-        )
-    if fun == "log":
-        return lambda value, dmin, dmax, y1, y2: numpy.log(
-            pam.linlin(value, x1=dmin, x2=dmax, y1=numpy.exp(y1), y2=numpy.exp(y2))
-        )
-    if callable(fun):
-        varnames = fun.__code__.co_varnames[: fun.__code__.co_argcount]
-        if ("x1" in varnames) and ("x2" in varnames):
-            return lambda value, dmin, dmax, y1, y2: fun(
-                value, x1=dmin, x2=dmax, y1=y1, y2=y2
-            )
-        print("ERROR:", varnames)
-        return lambda value, dmin, dmax, y1, y2: pam.linlin(
-            value, x1=dmin, x2=dmax, y1=y1, y2=y2
-        )
-
-
-def fnarg_to_fun(fun):
-    """turn fnargument into function if needed
     fun can be either a string ("lin", "log", "exp") for corresponding mapping
     or a function such as pam.linlin, or a custom function which
     offers dmin dmax args for the data min/max and y1, y2 args for the resulting
@@ -147,46 +116,16 @@ def fnarg_to_fun(fun):
         return linlinr
     if fun == "exp":
         return lambda value, xr, yr, **kwargs: numpy.exp(
-            linlinr(value, xr, [numpy.log(y) for y in yr])
+            linlinr(value, xr, [numpy.log(y) for y in yr], **kwargs)
         )
-
     if fun == "log":
         return lambda value, xr, yr, **kwargs: numpy.log(
             linlinr(value, xr, [numpy.exp(y) for y in yr], **kwargs)
         )
     if callable(fun):
+        # TODO Check here for optional parameters and handle them accordingly
         # varnames = fun.__code__.co_varnames[: fun.__code__.co_argcount]
         return fun
-
-
-def parse_mapping(mapping):
-    """parse a mapping tuple using specification candy
-
-    Args:
-        mapping (tuple): the tuple contains
-        - feature name
-        - mapping function
-        - argument dictionary
-
-    the function is needed as
-    - instead of a mapping function, shortcut strings "lin", "exp", "log"
-    should be accepted and converted into functions as needed
-    - instead of an argument dictionary a tuple or list of two numbers
-    should be accepted, (for specifying the target range) which should be
-    converted into a proper dictionary
-    the corrected mapping specification is returned
-
-    Returns:
-        tuple: column, mapping function, mapping function argument
-        tuple (apart from "dmin" and "dmax")
-    """
-    col, fun, marg = mapping
-    fn = fnarg_to_fun_old(fun)
-    if (type(marg) is tuple) or (type(marg) is list):
-        mkwargs = {"y1": marg[0], "y2": marg[1]}
-    if type(marg) is dict:
-        mkwargs = marg
-    return col, fn, mkwargs
 
 
 class ContinuousPMS(BasicPMS):
@@ -208,10 +147,6 @@ class ContinuousPMS(BasicPMS):
         sort_by_onset=True,
         **odfkwargs,
     ):
-        self.remove()
-
-        df = df.copy()
-        df.reset_index()
         dfp = _mapping_to_score_dataframe(df, mapping, sort_by_onset, **odfkwargs)
         self.mapping_df = dfp
 
@@ -221,11 +156,11 @@ class ContinuousPMS(BasicPMS):
 
         # process all rows
         for idx in dfp.index:
-            pvec = dict(dfp.loc[idx])
-            onset = pvec["onset"]
-            del pvec["onset"]
+            parameters = dict(dfp.loc[idx])
+            onset = parameters["onset"]
+            del parameters["onset"]
             with self._context.at(at + onset, info={"sonecule_id": self.sonecule_id}):
-                self._synth.set(params=pvec)
+                self._synth.set(params=parameters)
 
         # stop synth at the end
         max_onset = dfp["onset"].max()
@@ -240,33 +175,39 @@ def identity(x):
     return x
 
 
+def _parg_to_fn(pa):
+    post_fn = None
+    # TODO pam.by_name(name: str) -> Callable
+    if isinstance(pa, str):
+        if pa in ["db_to_amp", "dbamp"]:
+            post_fn = pam.db_to_amp
+        elif pa in ["midi_to_cps", "midicps"]:
+            post_fn = pam.midi_to_cps
+        elif pa in ["cps_to_midi", "cpsmidi"]:
+            post_fn = pam.cps_to_midi
+        elif pa in ["amp_to_db", "ampdb"]:
+            post_fn = pam.amp_to_db
+        elif pa in "floor":
+            post_fn = numpy.floor
+    return post_fn
+
+
 def _pre_arg_to_fn(pa):
     pre_fn = identity
     if isinstance(pa, str):
-        if pa == "abs":
-
-            def abs_fn(x):
-                return numpy.abs(x)
-
-            pre_fn = abs_fn  # numpy.abs  # lambda x: numpy.abs(x)
+        fun = _parg_to_fn(pa)
+        if fun is not None:
+            pre_fn = fun
+        elif pa == "abs":
+            pre_fn = numpy.abs
         elif pa == "sign":
-            pre_fn = numpy.sign  # lambda x: numpy.sign(x)
+            pre_fn = numpy.sign
         elif pa == "diff":
 
             def series_diff_fn(x):
                 return x.diff()
 
             pre_fn = series_diff_fn  # lambda x: x.diff()
-        if pa in ["db_to_amp", "dbamp"]:
-            pre_fn = pam.db_to_amp  # lambda x: pam.db_to_amp(x)
-        elif pa in ["midicps", "midi_to_cps"]:
-            pre_fn = pam.midi_to_cps  # lambda x: pam.midi_to_cps(x)
-        elif pa in ["cpsmidi", "cps_to_midi"]:
-            pre_fn = pam.cps_to_midi  # lambda x: pam.cps_to_midi(x)
-        elif pa in ["amp_to_db", "ampdb"]:
-            pre_fn = pam.amp_to_db  # lambda x: pam.amp_to_db(x)
-        elif pa in "floor":
-            pre_fn = numpy.floor  # lambda x: numpy.floor(x)
     elif callable(pa):
         pre_fn = pa
     return pre_fn
@@ -274,17 +215,9 @@ def _pre_arg_to_fn(pa):
 
 def _post_arg_to_fn(pa):
     post_fn = identity
-    if isinstance(pa, str):
-        if pa in ["db_to_amp", "dbamp"]:
-            post_fn = pam.db_to_amp  # lambda x: pam.db_to_amp(x)
-        elif pa in ["midicps", "midi_to_cps"]:
-            post_fn = pam.midi_to_cps  # lambda x: pam.midi_to_cps(x)
-        elif pa in ["cpsmidi", "cps_to_midi"]:
-            post_fn = pam.cps_to_midi  # lambda x: pam.cps_to_midi(x)
-        elif pa in ["amp_to_db", "ampdb"]:
-            post_fn = pam.amp_to_db  # lambda x: pam.amp_to_db(x)
-        elif pa in "floor":
-            post_fn = numpy.floor  # lambda x: numpy.floor(x)
+    fun = _parg_to_fn(pa)
+    if fun is not None:
+        post_fn = fun
     elif callable(pa):
         post_fn = pa
     return post_fn
@@ -296,12 +229,12 @@ def _mapping_to_score_dataframe(
     sort_by_onset=True,
     **odfkwargs,
 ):
+    df = df.copy()
     if sort_by_onset:
         assert "onset" in mapping.keys()
         pspec = mapping["onset"]
         if isinstance(pspec, numbers.Number):
-            print("error sort_by onset: no column specified")
-            return -1
+            raise ValueError("Wrong specification for onset")
         elif isinstance(pspec, str):
             pspec = {"col": pspec}
         elif isinstance(pspec, (list, tuple)):
@@ -332,18 +265,17 @@ def _mapping_to_score_dataframe(
         elif isinstance(pspec, (list, tuple)):
             pspec = dict(zip(("col", "fn", "yr"), pspec))
         col = pspec["col"]
-        fun = fnarg_to_fun(pspec["fn"])
+        fun = funarg_to_fun(pspec["fn"])
         try:
             invals = df[col]
             # print(param, df.shape, df.index)
             xr = dfkwargs["min"][col], dfkwargs["max"][col]
-        except KeyError:
+        except KeyError as error:
             if col == "INDEX":
                 invals = numpy.arange(num_rows)
                 xr = [0, num_rows]
             else:
-                print(f"Exception: KeyError accessing column {col}")
-                break
+                raise error
 
         # process optional pre mapping argument
         pre_fn = None
@@ -413,10 +345,7 @@ def _mapping_to_score_dataframe(
 class DiscretePMS(BasicPMS):
     def _prepare_synth(self, synth):
         if isinstance(synth, Synth):
-            assert (
-                synth.mutable
-            ), "Synth can be mutable, but should stop and free itself for DiscretePMS"
-            self._synth = synth
+            assert not synth.mutable, "Synth must be immutable for DiscretePMS"
             return synth
         else:
             # self._synth = self.context.synths.create(synth, track=1, mutable=False)
@@ -427,13 +356,11 @@ class DiscretePMS(BasicPMS):
         df: DataFrame,
         mapping,
         at=0,
-        stop_after=0.1,
         sort_by_onset=True,
         **odfkwargs,
     ):
-        self.remove()
-
         dfp = _mapping_to_score_dataframe(df, mapping, sort_by_onset, **odfkwargs)
+        self.mapping_df = dfp
 
         # generate sonification events
         for idx in dfp.index:
@@ -452,23 +379,22 @@ class TVOscBankPMS(SchedulableSonecule):
 
         self.data = data  # TODO data needs to be a Asig here .channels, .sr, .sig
         ctx = self.context
+        # create synths
+        self.syns = []
+        for i in range(data.channels):
+            syn = ctx.synths.create(name="tvosc-sine-1ch", track=i, mutable=True)
+            self.syns.append(syn)
 
+    def _prepare_synth_defs(self):
+        super()._prepare_synth_defs()
         # create SynthDef for tvosc
-        context.synths.add_synth_def(
+        self.context.synths.add_synth_def(
             "tvosc-sine-1ch",
             """{ | out=0, freq=400, amp=0.1, pan=0, lg=0.1 |
             var sig = SinOsc.ar(freq.lag(lg), mul: amp.lag(lg));
             Out.ar(out, Pan2.ar(sig, pan));
         }""",
         )
-
-        ctx._backend.sc.server.sync()
-
-        # create synths
-        self.syns = []
-        for i in range(data.channels):
-            syn = ctx.synths.create(name="tvosc-sine-1ch", track=i, mutable=True)
-            self.syns.append(syn)
 
     def schedule(
         self,
@@ -578,9 +504,9 @@ class ContinuousCallbackPMS(SchedulableSonecule):
 
         self.syn = ctx.synths.create(name="contsyn", track=1, mutable=True)
 
-        self.pdict = {}
-        for k, v in self.syn.params.items():
-            self.pdict[k] = v.default
+        self.parameter_defaults = {
+            name: parameter.default for name, parameter in self.syn.params.items()
+        }
 
     @staticmethod
     def mapcol(r, name, cmins, cmaxs, dmi, dma):
@@ -602,7 +528,7 @@ class ContinuousCallbackPMS(SchedulableSonecule):
 
         # create synths
         with ctx.at(time=at):
-            self.syn.start(**self.pdict)
+            self.syn.start(**self.parameter_defaults)
 
         # compute parameters for mapping
         # 1. src ranges for pitch mapping
@@ -617,7 +543,7 @@ class ContinuousCallbackPMS(SchedulableSonecule):
         for idx, r in df.iterrows():
             onset = pam.linlin(ct, 0, nrows, 0, duration)
             with ctx.at(time=at + onset):
-                pdict = callback_fn(r, cmi, cma, self.pdict)
+                pdict = callback_fn(r, cmi, cma, self.parameter_defaults)
                 self.syn.set(pdict)
             if onset > maxonset:
                 maxonset = onset
@@ -632,20 +558,20 @@ class ContinuousCallbackPMS(SchedulableSonecule):
     def create_callback_template(self, auto_assign=False):
         df = self.data
         tabstr = "    "
-        str = "def cbfn(r, cmi, cma, pp):\n"
-        str += tabstr + "# columns are:"
+        callback_code = "def cbfn(r, cmi, cma, pp):\n"
+        callback_code += tabstr + "# columns are:"
         feature_list = []
         for i, col in enumerate(df.columns):
             feature = col
             feature_list.append(feature)
-            str += f"'{col}' "
+            callback_code += f"'{col}' "
             if (i + 1) % 4 == 0:
-                str += "\n" + tabstr + "# "
-        str += "\n"
+                callback_code += "\n" + tabstr + "# "
+        callback_code += "\n"
 
         fct = 0
-        for p in self.pdict:
-            if p == "out":
+        for parameter_name, default in self.parameter_defaults.items():
+            if parameter_name == "out":
                 continue
             if auto_assign:
                 # assign features automatically
@@ -653,26 +579,28 @@ class ContinuousCallbackPMS(SchedulableSonecule):
                 fct += 1
                 if fct == len(feature_list) - 1:
                     fct = 0
-                leftstr = f"pp['{p}']"
-                bound_left = self.pdict[p] * 0.75
-                bound_right = self.pdict[p] * 1.5
-                str += (
+                leftstr = f"pp['{parameter_name}']"
+                bound_left = default * 0.75
+                bound_right = default * 1.5
+                callback_code += (
                     tabstr
                     + f"{leftstr:15s}\t = mapcol(r, '{feature}'"
                     + f", cmi, cma, {bound_left:.2f}, {bound_right:.2f})\n"
                 )
-                pass
             else:
-                str += tabstr + f"pp['{p}']\t = mapcol(r, 'colname', cmi, cma, 1, 2)\n"
-            ""
-        str += tabstr + "return pp"
-        print(str)
+                callback_code += (
+                    tabstr
+                    + f"pp['{parameter_name}']\t"
+                    + " = mapcol(r, 'colname', cmi, cma, 1, 2)\n"
+                )
+        callback_code += tabstr + "return pp"
+        print(callback_code)
         print(
             "# create sonification e.g. by using\n"
             + "sn.gcc().timeline.reset()"
             + "# scb.schedule(at=0, duration=5, callback_fn=cbfn).start(rate=1)\n"
         )
-        return str
+        return callback_code
 
 
 class DiscreteCallbackPMS(SchedulableSonecule):
@@ -689,18 +617,11 @@ Out.ar(out, Pan2.ar(sig, pan, env));
 }""",
         )
 
-    def __init__(self, data, synth_name=None, context=None):
+    def __init__(self, data, synth_name: Optional[str] = None, context=None):
         super().__init__(context=context)
 
         self.data = data
-        self.synth_name = synth_name
-        if self.synth_name:
-            pass
-        else:
-            self._prepare_synth_defs()
-        self.context._backend.sc.server.sync()
-
-        # ToDo: check howto get the pdict items without creating an instance?
+        self.synth_name = synth_name or "dcbpms"
         self.syn = self.context.synths.create(
             name=self.synth_name, track=1, mutable=False
         )
@@ -719,19 +640,6 @@ Out.ar(out, Pan2.ar(sig, pan, env));
         callback_fn=None,
         remove=True,
     ):
-        # here schedule function, with argument for replace default to true
-        # "change"
-        ctx = self.context
-        if remove:
-            self.remove()
-
-        # create synths
-        # with ctx.at(time=at):
-        #     self.syn.start(**self.pdict)
-
-        # compute parameters for mapping
-        # 1. src ranges for pitch mapping
-
         df = self.data
         cmi = df.min()
         cma = df.max()
@@ -741,7 +649,9 @@ Out.ar(out, Pan2.ar(sig, pan, env));
             pdict = callback_fn(r, cmi, cma, self.pdict)
             onset = pdict["onset"]
             del pdict["onset"]
-            with ctx.at(time=at + onset, info={"sonecule_id": self.sonecule_id}):
+            with self.context.at(
+                time=at + onset, info={"sonecule_id": self.sonecule_id}
+            ):
                 self.syn.start(params=pdict)
         return self
 
