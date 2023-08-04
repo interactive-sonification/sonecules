@@ -64,7 +64,7 @@ class DataSonogramMBS(Sonecule):
         self.rtime = rtime
         self.level = level
 
-        self._latency = 0.01 + self.context.playback.clock.sleep_time
+        self._latency = 0.2
 
         # prepare plot
         self.fig = plt.figure(figsize=(5, 5))

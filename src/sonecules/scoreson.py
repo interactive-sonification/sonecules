@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional
 
 import numpy
 import pyamapping as pam
-import sc3nb as scn
 from mesonic.synth import Synth
 from pandas import DataFrame
 
@@ -406,13 +405,10 @@ class TVOscBankPMS(SchedulableSonecule):
         amp_mode="absval",
         map_mode="channelwise",
         level=-6,
-        remove=True,
     ):
         # here schedule function, with argument for replace default to true
         # "change"
         ctx = self.context
-        if remove:
-            self.remove()
 
         # start syns (oscillators)
         with ctx.at(time=at):
@@ -442,7 +438,7 @@ class TVOscBankPMS(SchedulableSonecule):
             pch_centers = numpy.array(pitch_step) + base_pitch
             pch_wids = numpy.diff([0] + pitch_step) * pitch_relwid
 
-        global_amp = scn.dbamp(level)
+        global_amp = pam.db_to_amp(level)
         maxonset = -1
         # modulate oscillators
         for j, r in enumerate(dsig):
@@ -455,7 +451,7 @@ class TVOscBankPMS(SchedulableSonecule):
                     pitch = pam.linlin(
                         el, channel_mins[i], channel_maxs[i], cp - dp, cp + dp
                     )
-                    self.syns[i].freq = scn.midicps(pitch)
+                    self.syns[i].freq = pam.midi_to_cps(pitch)
                     if amp_mode == "change":
                         self.syns[i].amp = pam.linlin(
                             abs(change[i]), 0, 0.8, 0, global_amp
@@ -477,18 +473,17 @@ class TVOscBankPMS(SchedulableSonecule):
         return self
 
 
-class ContinuousCallbackPMS(SchedulableSonecule):
-    def __init__(self, data, synthdef=None, context=None):
-        super().__init__(context=context)
+def mapcol(r, name, cmins, cmaxs, dmi, dma):
+    """service mapcol function"""
+    return pam.linlin(r[name], cmins[name], cmaxs[name], dmi, dma)
 
-        self.data = data
-        self.synthdef = synthdef
-        if self.synthdef:
-            self.context.synths.add_synth_def("contsyn", synthdef)
-        else:
-            self.context.synths.add_synth_def(
-                "contsyn",
-                """{ | out=0, freq=400, amp=0.1, vibfreq=0, vibintrel=0,
+
+class ContinuousCallbackPMS(SchedulableSonecule):
+    def _prepare_synth_defs(self):
+        self.synth_name = "contsyn"
+        self.context.synths.add_synth_def(
+            "contsyn",
+            """{ | out=0, freq=400, amp=0.1, vibfreq=0, vibintrel=0,
                         numharm=0, pulserate=0, pint=0, pwid=1, pan=0 |
                 var vib = SinOsc.ar(vibfreq, mul: vibintrel*freq, add: freq);
                 var sig = Blip.ar(vib, mul: amp, numharm: numharm);
@@ -496,37 +491,31 @@ class ContinuousCallbackPMS(SchedulableSonecule):
                                 width: pwid, mul: pint, add: 1-pint);
                 Out.ar(out, Pan2.ar(sig * pulse, pan));
             }""",
-            )
+        )
 
-        ctx = self.context
+    def __init__(self, data, synth_name: Optional[str] = None, context=None):
+        super().__init__(context=context)
 
-        ctx._backend.sc.server.sync()
-
-        self.syn = ctx.synths.create(name="contsyn", track=1, mutable=True)
-
+        self.data = data
+        self.synth_name = synth_name or self.synth_name
+        self.syn = self.context.synths.create(
+            name=self.synth_name, track=1, mutable=True
+        )
         self.parameter_defaults = {
             name: parameter.default for name, parameter in self.syn.params.items()
         }
-
-    @staticmethod
-    def mapcol(r, name, cmins, cmaxs, dmi, dma):
-        """service mapcol function"""
-        return pam.linlin(r[name], cmins[name], cmaxs[name], dmi, dma)
 
     def schedule(
         self,
         at=0,
         duration=4,
         callback_fn=None,
-        remove=True,
     ):
         # here schedule function, with argument for replace default to true
         # "change"
         ctx = self.context
-        if remove:
-            self.remove()
 
-        # create synths
+        # start synth
         with ctx.at(time=at):
             self.syn.start(**self.parameter_defaults)
 
@@ -619,20 +608,14 @@ Out.ar(out, Pan2.ar(sig, pan, env));
 
     def __init__(self, data, synth_name: Optional[str] = None, context=None):
         super().__init__(context=context)
-
         self.data = data
-        self.synth_name = synth_name or "dcbpms"
+        self.synth_name = synth_name or self.synth_name
         self.syn = self.context.synths.create(
             name=self.synth_name, track=1, mutable=False
         )
-        self.pdict = {}
-        for k, v in self.syn.params.items():
-            self.pdict[k] = v.default
-
-    @staticmethod
-    def mapcol(r, name, cmins, cmaxs, dmi, dma):
-        """service mapcol function"""
-        return pam.linlin(r[name], cmins[name], cmaxs[name], dmi, dma)
+        self.parameter_defaults = {
+            name: parameter.default for name, parameter in self.syn.params.items()
+        }
 
     def schedule(
         self,
@@ -646,7 +629,7 @@ Out.ar(out, Pan2.ar(sig, pan, env));
 
         # spawn synths for each row
         for idx, r in df.iterrows():
-            pdict = callback_fn(r, cmi, cma, self.pdict)
+            pdict = callback_fn(r, cmi, cma, self.parameter_defaults)
             onset = pdict["onset"]
             del pdict["onset"]
             with self.context.at(
@@ -671,10 +654,10 @@ Out.ar(out, Pan2.ar(sig, pan, env));
 
         fct = 0
         # go through parameters, with onset being the first
-        parameter_names = ["onset"] + list(self.pdict.keys())
-        if "out" in list(self.pdict.keys()):
+        parameter_names = ["onset"] + list(self.parameter_defaults.keys())
+        if "out" in list(self.parameter_defaults.keys()):
             parameter_names.remove("out")
-        self.pdict["onset"] = 0  # set a default value for onset
+        self.parameter_defaults["onset"] = 0  # set a default value for onset
 
         for p in parameter_names:
             if auto_assign:
@@ -684,8 +667,8 @@ Out.ar(out, Pan2.ar(sig, pan, env));
                 if fct == len(feature_list) - 1:
                     fct = 0
                 leftstr = f"pp['{p}']"
-                bound_left = self.pdict[p] * 0.75
-                bound_right = self.pdict[p] * 1.5
+                bound_left = self.parameter_defaults[p] * 0.75
+                bound_right = self.parameter_defaults[p] * 1.5
                 if p == "onset":
                     bound_right = duration
                 str += (
