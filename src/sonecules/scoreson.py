@@ -548,7 +548,7 @@ class ContinuousCallbackPMS(SchedulableSonecule):
         df = self.data
         tabstr = "    "
         callback_code = "def cbfn(r, cmi, cma, pp):\n"
-        callback_code += tabstr + "# columns are:"
+        callback_code += tabstr + "# columns are: "
         feature_list = []
         for i, col in enumerate(df.columns):
             feature = col
@@ -586,7 +586,7 @@ class ContinuousCallbackPMS(SchedulableSonecule):
         print(callback_code)
         print(
             "# create sonification e.g. by using\n"
-            + "sn.gcc().timeline.reset()"
+            + "sn.gcc().timeline.reset()\n"
             + "# scb.schedule(at=0, duration=5, callback_fn=cbfn).start(rate=1)\n"
         )
         return callback_code
