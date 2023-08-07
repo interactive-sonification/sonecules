@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 
 import pandas as pd
 from mesonic.context import Context
-from numpy import linspace
+from numpy import linspace, ndarray
 from pya import Asig
 
 from sonecules.base import SchedulableSonecule
@@ -48,7 +48,7 @@ class BaseAUD(SchedulableSonecule):
         --------
         """
         if time_column:
-            print("Warning: time column is noy yet implemented")
+            print("Warning: time column is not yet implemented")
         if not isinstance(df, (pd.DataFrame, pd.Series)):
             raise ValueError("Unsupported Type")
 
@@ -61,6 +61,59 @@ class BaseAUD(SchedulableSonecule):
 
         channel_names = [str(col) for col in df.columns]
         asig = Asig(df.values, sr=sr, cn=channel_names, label=f"df-{channel_names}")
+        return cls(asig, sr=None, channels=None, context=context)
+
+    @classmethod
+    def from_np(
+        cls,
+        data: ndarray,
+        sr: int = 44100,
+        time_column: Optional[Union[str, int]] = None,
+        columns: Optional[Union[str, int, List]] = None,
+        context: Optional[Context] = None,
+    ):
+        """
+        Construct BufferSynth from numpy ndarray.
+
+        Creates BufferSynth object from numpy array using a by-column or by index
+        allowing dtype specification.
+
+        Parameters
+        ----------
+        data : numpy array
+        sr : Number
+            sampling rate in Hz
+        time_column: string or integer
+            name of the column to be used as time index
+            if none is given, equidistant data at sampling rate sr is assumed
+        columns : string or Integer
+            Column label to use for data column.
+
+        Returns
+        -------
+        BufferSynth
+
+        See Also
+        --------
+
+        Examples
+        --------
+        """
+        if time_column:
+            print("Warning: time column is not yet implemented")
+        if not isinstance(data, ndarray):
+            raise ValueError("Unsupported Type")
+
+        if columns is None:
+            columns = slice(None)
+
+        data = data[:, columns]
+
+        if isinstance(columns, List):
+            channel_names = [str(col) for col in columns]
+        elif isinstance(columns, int):
+            channel_names = str(columns)
+        asig = Asig(data, sr=sr, cn=channel_names, label=f"np-{channel_names}")
         return cls(asig, sr=None, channels=None, context=context)
 
     def __init__(self, asig, sr=None, channels=None, context=None, sonecule_id=None):
