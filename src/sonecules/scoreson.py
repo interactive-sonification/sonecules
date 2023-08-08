@@ -6,6 +6,7 @@ import numpy
 import pyamapping as pam
 from mesonic.synth import Synth
 from pandas import DataFrame
+from pya import Asig
 
 from sonecules.base import SchedulableSonecule
 
@@ -377,6 +378,7 @@ class TVOscBankPMS(SchedulableSonecule):
         super().__init__(context=context)
 
         self.data = data  # TODO data needs to be a Asig here .channels, .sr, .sig
+        assert isinstance(data, Asig)
         ctx = self.context
         # create synths
         self.syns = []
@@ -411,7 +413,7 @@ class TVOscBankPMS(SchedulableSonecule):
         ctx = self.context
 
         # start syns (oscillators)
-        with ctx.at(time=at):
+        with ctx.at(time=at, info={"sonecule_id": self.sonecule_id}):
             for i, syn in enumerate(self.syns):
                 syn.start(freq=440, amp=0, pan=0, lg=0.1)
 
@@ -444,7 +446,7 @@ class TVOscBankPMS(SchedulableSonecule):
         for j, r in enumerate(dsig):
             onset = j / self.data.sr / rate
             change = r - dsig[max(0, j - 1)]
-            with ctx.at(time=at + onset):
+            with ctx.at(time=at + onset, info={"sonecule_id": self.sonecule_id}):
                 for i, el in enumerate(r):
                     cp = pch_centers[i]
                     dp = pch_wids[i]
@@ -467,7 +469,7 @@ class TVOscBankPMS(SchedulableSonecule):
                 maxonset = onset
 
         # stop oscillators
-        with ctx.at(time=at + maxonset):
+        with ctx.at(time=at + maxonset, info={"sonecule_id": self.sonecule_id}):
             for syn in self.syns:
                 syn.stop()
         return self
