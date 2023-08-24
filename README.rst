@@ -23,6 +23,14 @@
         :alt: Twitter
         :target: https://twitter.com/sonecules
 
+.. image:: https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white
+   :target: https://github.com/pre-commit/pre-commit
+   :alt: pre-commit
+
+.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
+    :target: https://github.com/psf/black
+    :alt: black
+
 .. image:: https://img.shields.io/badge/-PyScaffold-005CA0?logo=pyscaffold
     :alt: Project generated with PyScaffold
     :target: https://pyscaffold.org/
@@ -37,7 +45,7 @@ sonecules
     a Python Sonification Architecture
 
 
-sonecules are sonification designs wrapped in a concise object-oriented interface based on `mesonic <https://github.com/interactive-sonification/mesonic/>`.
+sonecules are sonification designs wrapped in a concise object-oriented interface based on `mesonic <https://github.com/interactive-sonification/mesonic/>`_.
 
 
 .. _pyscaffold-notes:
@@ -59,6 +67,24 @@ It is a good idea to update the hooks to the latest version::
 Don't forget to tell your contributors to also install and use pre-commit.
 
 .. _pre-commit: https://pre-commit.com/
+
+
+How to cite sonecules
+=====================
+
+Authors of scientific papers using sonecules are encouraged to cite the following paper.
+
+.. code-block:: none
+
+    @inproceedings{ReinschHermann-ICAD2023-Sonecules,
+    author       = {Reinsch, Dennis and Hermann, Thomas},
+    location     = {Norrköping, Sweden},
+    publisher    = {ICAD},
+    title        = {{sonecules: a Python Sonification Architecture}},
+    url          = {https://pub.uni-bielefeld.de/record/2979095},
+    year         = {2023},
+    }
+
 
 Note
 ====
