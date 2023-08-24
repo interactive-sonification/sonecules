@@ -42,9 +42,7 @@ sonecules
 =========
 
 
-    a Python Sonification Architecture
-
-
+sonecules is a Python Sonification Architecture.
 sonecules are sonification designs wrapped in a concise object-oriented interface based on `mesonic <https://github.com/interactive-sonification/mesonic/>`_.
 
 
@@ -63,8 +61,6 @@ changes::
 It is a good idea to update the hooks to the latest version::
 
     pre-commit autoupdate
-
-Don't forget to tell your contributors to also install and use pre-commit.
 
 .. _pre-commit: https://pre-commit.com/
 
@@ -85,9 +81,7 @@ Authors of scientific papers using sonecules are encouraged to cite the followin
     year         = {2023},
     }
 
+Publications
+============
 
-Note
-====
-
-This project has been set up using PyScaffold 4.4. For details and usage
-information on PyScaffold see https://pyscaffold.org/.
+* `Reinsch, D., & Hermann, T. (2023). sonecules: a Python Sonification Architecture. Presented at the International Conference on Auditory Display (ICAD 2023), Norrköping, Sweden. <https://pub.uni-bielefeld.de/download/2979095/2982363/ReinschHermann-ICAD2023-Sonecules.pdf>`_
